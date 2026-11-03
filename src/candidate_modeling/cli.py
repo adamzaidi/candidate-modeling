@@ -1,0 +1,84 @@
+"""`cm` command line. Same operations as the MCP server.
+
+  cm find "James Talarico" --state TX
+  cm add "James Talarico" --state TX --fec S6TX00479 --tx-filer 00081913
+  cm sync TX            | cm sync MI --years 2024 2025 2026
+  cm fetch talarico [--sources fec TX] [--max-pages 50]
+  cm summary talarico [--jurisdiction TX]
+  cm compare talarico someone-else
+  cm query "SELECT ..."
+  cm refresh            # sync every state in use, re-fetch every profile (used by CI)
+  cm serve              # MCP server over stdio
+"""
+import argparse
+import json
+import sys
+
+from . import config, pipeline, query
+
+
+def _print(obj):
+    print(json.dumps(obj, indent=2, default=str))
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="cm", description="Candidate campaign-finance modeling")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("find"); s.add_argument("name"); s.add_argument("--state")
+    s = sub.add_parser("add")
+    s.add_argument("name"); s.add_argument("--state"); s.add_argument("--party"); s.add_argument("--slug")
+    s.add_argument("--fec", nargs="*", default=[]); s.add_argument("--tx-filer", nargs="*", default=[])
+    s.add_argument("--mi-committee", nargs="*", default=[]); s.add_argument("--openstates")
+    s = sub.add_parser("sync"); s.add_argument("state"); s.add_argument("--years", nargs="*", type=int)
+    s.add_argument("--force", action="store_true")
+    s = sub.add_parser("fetch"); s.add_argument("slug"); s.add_argument("--sources", nargs="*")
+    s.add_argument("--cycles", nargs="*", type=int); s.add_argument("--max-pages", type=int)
+    s = sub.add_parser("summary"); s.add_argument("slug"); s.add_argument("--jurisdiction"); s.add_argument("--cycle", type=int)
+    s = sub.add_parser("compare"); s.add_argument("slugs", nargs="+"); s.add_argument("--jurisdiction")
+    s = sub.add_parser("query"); s.add_argument("sql")
+    sub.add_parser("schema")
+    s = sub.add_parser("refresh"); s.add_argument("--max-pages", type=int)
+    sub.add_parser("serve")
+
+    a = ap.parse_args(argv)
+    if a.cmd == "find":
+        _print(pipeline.find_candidate(a.name, a.state))
+    elif a.cmd == "add":
+        st = {}
+        if a.tx_filer:
+            st["TX"] = {"filer_ids": a.tx_filer}
+        if a.mi_committee:
+            st["MI"] = {"committee_ids": a.mi_committee}
+        _print(pipeline.add_candidate(a.name, state=a.state, party=a.party, slug=a.slug, fec_candidate_ids=a.fec,
+                                      state_ids=st, openstates_person_id=a.openstates))
+    elif a.cmd == "sync":
+        kw = {"force": a.force}
+        if a.years:
+            kw["years"] = a.years
+        _print(pipeline.sync_state(a.state, **kw))
+    elif a.cmd == "fetch":
+        _print(pipeline.fetch_finances(a.slug, sources=a.sources, cycles=a.cycles, max_pages=a.max_pages))
+    elif a.cmd == "summary":
+        _print(pipeline.finance_summary(a.slug, jurisdiction=a.jurisdiction, cycle=a.cycle))
+    elif a.cmd == "compare":
+        _print(pipeline.compare_candidates(a.slugs, jurisdiction=a.jurisdiction))
+    elif a.cmd == "query":
+        _print(query.run(a.sql))
+    elif a.cmd == "schema":
+        _print(query.describe_schema())
+    elif a.cmd == "refresh":
+        profiles = config.list_profiles()
+        used = sorted({s for p in profiles for s in p["ids"].get("state", {})})
+        for st in used:
+            _print(pipeline.sync_state(st))
+        for p in profiles:
+            _print(pipeline.fetch_finances(p["slug"], max_pages=a.max_pages))
+    elif a.cmd == "serve":
+        from .mcp_server import main as serve
+        serve()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

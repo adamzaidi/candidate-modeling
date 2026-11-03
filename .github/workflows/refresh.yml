@@ -1,0 +1,43 @@
+# Re-sync state bulk data and re-fetch every profiled candidate.
+# The data/ folder (parquet caches, DuckDB, FEC resume cursors) persists between runs via the
+# Actions cache, so long FEC pulls continue where the last run stopped.
+name: refresh
+on:
+  schedule:
+    - cron: "0 11 * * 1"   # Mondays 11:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "FEC pages per committee-cycle this run (100 rows/page)"
+        default: "800"
+concurrency: refresh
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      FEC_API_KEY: ${{ secrets.FEC_API_KEY }}
+      OPENSTATES_API_KEY: ${{ secrets.OPENSTATES_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e .
+      - uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+          restore-keys: data-
+      - run: cm refresh --max-pages ${{ inputs.max_pages || '800' }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidates-duckdb
+          path: data/candidates.duckdb
+          retention-days: 30

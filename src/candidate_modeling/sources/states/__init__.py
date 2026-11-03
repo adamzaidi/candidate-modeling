@@ -1,0 +1,17 @@
+"""State connector registry. Each module exposes: STATE, SOURCE, sync(), search(name), load(con, profile).
+
+To add a state: write `<state>.py` with that interface, register it here, add fixture tests.
+"""
+from . import michigan, texas
+
+REGISTRY = {m.STATE: m for m in (texas, michigan)}
+
+# Priority order for upcoming connectors (competitive / high-spend states first).
+PLANNED = ["GA", "PA", "AZ", "WI", "NC", "NV", "FL", "OH", "CA", "NY"]
+
+
+def get(state: str):
+    s = state.upper()
+    if s not in REGISTRY:
+        raise KeyError(f"No connector for {s} yet. Supported: {sorted(REGISTRY)}. Planned next: {PLANNED}")
+    return REGISTRY[s]
