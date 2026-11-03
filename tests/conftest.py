@@ -105,3 +105,47 @@ def mi_zip() -> bytes:
         zf.writestr("2026_mi_cfr_contributions1.txt", part1)
         zf.writestr("2026_mi_cfr_contributions2.txt", part2)
     return buf.getvalue()
+
+
+# ---------- Pennsylvania fixture zip ----------
+
+def _pa_filer(report_id, filer_id, name, ftype="2", cycle="1", submitted="2026-04-07", amend="N"):
+    return (f'{report_id},"{filer_id}",2026,{submitted},{cycle},"{amend}","N","{ftype}","{name}","GOV","-1","DEM",'
+            f'"","","Philadelphia","PA","19110","46","2025520221",0.00,0.00,0.00')
+
+
+def _pa_contrib(report_id, filer_id, contributor, amt1="100.00", d1="20260115", amt2="0", d2="0", amt3="0", d3="0",
+                section="ID", state="PA", occupation="Teacher", employer="School District"):
+    return (f'{report_id},"{filer_id}",2026,2026-04-07,1,"{section}","{contributor}","","","Philadelphia","{state}",'
+            f'"191101234","{occupation}","{employer}","","","","","","{d1}",{amt1},"{d2}",{amt2},"{d3}",{amt3},""')
+
+
+@pytest.fixture
+def pa_zip() -> bytes:
+    from candidate_modeling.sources.states import pennsylvania as pa
+    filers = "\r\n".join([",".join(pa.FILER_COLS),
+        _pa_filer(100, "20160016", "Shapiro for Pennsylvania"),
+        _pa_filer(101, "2026C0403", "SHAPIRO, JOSHUA D", ftype="1"),
+        _pa_filer(200, "20160016", "Shapiro for Pennsylvania", cycle="2", submitted="2026-05-08"),
+        _pa_filer(201, "20160016", "Shapiro for Pennsylvania", cycle="2", submitted="2026-06-01", amend="Y"),
+        _pa_filer(300, "99999999", "UPPER DARBY FIREFIGHTERS \"PAC\""),
+    ]) + "\r\n"
+    contribs = [",".join(pa.CONTRIB_COLS),
+        _pa_contrib(100, "20160016", "Jane Doe"),
+        _pa_contrib(100, "20160016", "Jane Doe"),  # identical second gift: must be kept
+        _pa_contrib(100, "20160016", 'ILLEGIBLE, CHESTER "CHET" SMITH', amt1="50.00", amt2="25.00", d2="20260201",
+                    section="IB"),  # unescaped quotes + 2 slots
+        _pa_contrib(100, "20160016", "IBEW Local 98 COPE", amt1="500000.00", section="IC", occupation="", employer=""),
+        _pa_contrib(100, "20160016", "Out Of Stater", amt1="250.00", state="NY", employer="Flitter Milz PC\r\n"),  # newline
+        _pa_contrib(200, "20160016", "Superseded Original", amt1="9999.00"),  # report 200 replaced by 201
+        _pa_contrib(201, "20160016", "Amended Version", amt1="300.00"),
+        _pa_contrib(300, "99999999", "Someone Else", amt1="1.00"),
+    ]
+    body = ("\r\n".join(contribs) + "\r\n").encode("utf-8")
+    body += _pa_contrib(100, "20160016", "José Caf\xe9", amt1="10.00", section="IB").encode("cp1252") + b"\r\n"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("filer_2026.txt", filers)
+        zf.writestr("contrib_2026.txt", body)
+        zf.writestr("expense_2026.txt", "x\r\n")
+    return buf.getvalue()

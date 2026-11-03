@@ -17,7 +17,8 @@ def find_candidate(name: str, state: str | None = None) -> dict:
     targets = [state.upper()] if state else list(states.REGISTRY)
     for s in targets:
         if s in states.REGISTRY:
-            out["states"][s] = states.REGISTRY[s].search(name)
+            m = states.REGISTRY[s]
+            out["states"][s] = [{**r, "id": r.get(m.RESULT_ID)} if "error" not in r else r for r in m.search(name)]
         else:
             out["states"][s] = [{"error": f"No connector for {s} yet (planned: {states.PLANNED})"}]
     return out
@@ -26,7 +27,8 @@ def find_candidate(name: str, state: str | None = None) -> dict:
 def add_candidate(name: str, state: str | None = None, party: str | None = None, slug: str | None = None,
                   fec_candidate_ids: list[str] | None = None, state_ids: dict | None = None,
                   openstates_person_id: str | None = None, notes: str | None = None) -> dict:
-    """Create or merge a profile. state_ids: {"TX": {"filer_ids": [...]}, "MI": {"committee_ids": [...]}}."""
+    """Create or merge a profile. state_ids: {"TX": ["00081913"], "PA": ["20160016"]} (the `id` values from
+    find_candidate), or the explicit form {"TX": {"filer_ids": [...]}}."""
     slug = slug or config.slugify(name)
     try:
         p = config.load_profile(slug)
@@ -42,6 +44,8 @@ def add_candidate(name: str, state: str | None = None, party: str | None = None,
         if cid not in ids["fec_candidate_ids"]:
             ids["fec_candidate_ids"].append(cid)
     for st, d in (state_ids or {}).items():
+        if isinstance(d, (list, tuple)):
+            d = {states.get(st).ID_KEY: list(d)}
         cur = ids["state"].setdefault(st.upper(), {})
         for k, vals in d.items():
             cur[k] = sorted(set(cur.get(k, [])) | set(vals))

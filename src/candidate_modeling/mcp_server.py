@@ -28,15 +28,11 @@ def find_candidate(name: str, state: str | None = None) -> dict:
 
 @server.tool()
 def add_candidate(name: str, state: str | None = None, party: str | None = None,
-                  fec_candidate_ids: list[str] | None = None, tx_filer_ids: list[str] | None = None,
-                  mi_committee_ids: list[str] | None = None, openstates_person_id: str | None = None,
-                  slug: str | None = None) -> dict:
-    """Create or extend a candidate profile with the source IDs chosen from find_candidate. Merges, never drops IDs."""
-    state_ids = {}
-    if tx_filer_ids:
-        state_ids["TX"] = {"filer_ids": tx_filer_ids}
-    if mi_committee_ids:
-        state_ids["MI"] = {"committee_ids": mi_committee_ids}
+                  fec_candidate_ids: list[str] | None = None, state_ids: dict[str, list[str]] | None = None,
+                  openstates_person_id: str | None = None, slug: str | None = None) -> dict:
+    """Create or extend a candidate profile with IDs chosen from find_candidate. Merges, never drops IDs.
+    state_ids maps state code -> list of the `id` values find_candidate returned, e.g. {"TX": ["00081913"]}.
+    In states where candidates raise money through a separate committee (e.g. PA), use the committee's id."""
     return pipeline.add_candidate(name, state=state, party=party, slug=slug, fec_candidate_ids=fec_candidate_ids,
                                   state_ids=state_ids, openstates_person_id=openstates_person_id)
 

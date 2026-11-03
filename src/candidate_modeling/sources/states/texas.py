@@ -22,6 +22,8 @@ from ._common import download, extract_member, read_manifest, remote_last_modifi
 
 STATE = "TX"
 SOURCE = "tx_tec"
+ID_KEY = "filer_ids"        # profile ids.state.<STATE>.<ID_KEY>
+RESULT_ID = "filer_id"     # field in search() results holding that ID
 ZIP_URL = "https://prd.tecprd.ethicsefile.com/public/cf/public/TEC_CF_CSV.zip"
 CONTRIB_FILE = re.compile(r"^contribs_\d+\.csv$")
 

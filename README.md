@@ -23,7 +23,7 @@ cp .env.example .env               # add FEC_API_KEY (free: api.data.gov/signup)
 
 cm find "James Talarico" --state TX          # IDs from FEC + synced states
 cm sync TX                                   # one-time ~1 GB download -> parquet (~2 min)
-cm add "James Talarico" --slug talarico --state TX --fec S6TX00479 --tx-filer 00081913
+cm add "James Talarico" --slug talarico --state TX --fec S6TX00479 --state-id TX=00081913
 cm fetch talarico                            # load into data/candidates.duckdb
 cm summary talarico --jurisdiction TX        # geography, donor size mix, employers, trend
 cm query "SELECT state, sum(amount) FROM contributions_clean WHERE candidate_slug='talarico' GROUP BY 1 ORDER BY 2 DESC LIMIT 5"

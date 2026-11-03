@@ -122,7 +122,7 @@ def test_michigan_sync_skips_unchanged(mi_zip):
 # ---------- registry ----------
 
 def test_registry_and_unknown_state():
-    assert set(states.REGISTRY) == {"TX", "MI"}
+    assert set(states.REGISTRY) == {"TX", "MI", "PA"}
     for m in states.REGISTRY.values():
         for attr in ("STATE", "SOURCE", "sync", "search", "load", "is_synced"):
             assert hasattr(m, attr), f"{m.__name__} missing {attr}"
@@ -130,3 +130,51 @@ def test_registry_and_unknown_state():
         states.get("GA")
     except KeyError as e:
         assert "Planned next" in str(e)
+
+
+# ---------- Pennsylvania ----------
+
+from candidate_modeling.sources.states import pennsylvania  # noqa: E402
+
+
+def test_pa_parse_line_handles_unescaped_quotes():
+    row = pennsylvania.parse_line('1,"20260011","ILLEGIBLE, CHESTER "CHET" &amp; MARION","",100.00,""')
+    assert row == ["1", "20260011", 'ILLEGIBLE, CHESTER "CHET" &amp; MARION', "", "100.00", ""]
+
+
+@responses.activate
+def test_pa_sync_search_load(pa_zip):
+    url = f"{pennsylvania.BASE}/2026.zip"
+    responses.head(url, headers={"Last-Modified": "Fri, 30 Oct 2026 18:02:41 GMT"})
+    responses.get(url, body=pa_zip)
+    responses.head(f"{pennsylvania.BASE}/2027.zip", status=404)
+    out = pennsylvania.sync(years=[2026, 2027])
+    y = out["years"][0]
+    assert y["contrib"] == {"rows": 9, "unparseable": 0} and y["filer"]["unparseable"] == 0
+    assert out["years"][1]["status"] == "not published"
+
+    hits = {h["filer_id"]: h for h in pennsylvania.search("Shapiro")}
+    assert hits["20160016"]["filer_type"] == "committee" and hits["2026C0403"]["filer_type"] == "candidate"
+    assert "99999999" not in hits
+
+    with store.connect() as con:
+        r = pennsylvania.load(con, _profile("PA", "filer_ids", ["20160016"]))
+        rows = con.execute("SELECT contributor_name, amount, state, contributor_type, employer FROM contributions "
+                           "ORDER BY contributor_name, amount").fetchall()
+    names = [x[0] for x in rows]
+    assert r["rows"] == 8
+    assert names.count("Jane Doe") == 2                      # identical gifts both kept
+    assert names.count('ILLEGIBLE, CHESTER "CHET" SMITH') == 2  # two slots unpivoted
+    assert "Superseded Original" not in names and "Amended Version" in names
+    assert "José Café" in names                               # cp1252 line decoded
+    assert ("IBEW Local 98 COPE", 500000.0, "PA", "organization", None) in rows  # IC section -> organization
+    assert any(x[0] == "Out Of Stater" and x[2] == "NY" and x[4].startswith("Flitter Milz PC") for x in rows)
+
+
+@responses.activate
+def test_pa_sync_skips_unchanged(pa_zip):
+    url = f"{pennsylvania.BASE}/2026.zip"
+    responses.head(url, headers={"Last-Modified": "x"})
+    responses.get(url, body=pa_zip)
+    pennsylvania.sync(years=[2026])
+    assert pennsylvania.sync(years=[2026])["years"][0]["status"] == "current"

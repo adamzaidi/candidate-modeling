@@ -1,7 +1,7 @@
 """`cm` command line. Same operations as the MCP server.
 
   cm find "James Talarico" --state TX
-  cm add "James Talarico" --state TX --fec S6TX00479 --tx-filer 00081913
+  cm add "James Talarico" --state TX --fec S6TX00479 --state-id TX=00081913
   cm sync TX            | cm sync MI --years 2024 2025 2026
   cm fetch talarico [--sources fec TX] [--max-pages 50]
   cm summary talarico [--jurisdiction TX]
@@ -28,8 +28,9 @@ def main(argv=None):
     s = sub.add_parser("find"); s.add_argument("name"); s.add_argument("--state")
     s = sub.add_parser("add")
     s.add_argument("name"); s.add_argument("--state"); s.add_argument("--party"); s.add_argument("--slug")
-    s.add_argument("--fec", nargs="*", default=[]); s.add_argument("--tx-filer", nargs="*", default=[])
-    s.add_argument("--mi-committee", nargs="*", default=[]); s.add_argument("--openstates")
+    s.add_argument("--fec", nargs="*", default=[]); s.add_argument("--openstates")
+    s.add_argument("--state-id", action="append", default=[], metavar="ST=ID",
+                   help="repeatable, e.g. --state-id TX=00081913 --state-id PA=20160016")
     s = sub.add_parser("sync"); s.add_argument("state"); s.add_argument("--years", nargs="*", type=int)
     s.add_argument("--force", action="store_true")
     s = sub.add_parser("fetch"); s.add_argument("slug"); s.add_argument("--sources", nargs="*")
@@ -45,11 +46,10 @@ def main(argv=None):
     if a.cmd == "find":
         _print(pipeline.find_candidate(a.name, a.state))
     elif a.cmd == "add":
-        st = {}
-        if a.tx_filer:
-            st["TX"] = {"filer_ids": a.tx_filer}
-        if a.mi_committee:
-            st["MI"] = {"committee_ids": a.mi_committee}
+        st: dict[str, list[str]] = {}
+        for pair in a.state_id:
+            code, _, ident = pair.partition("=")
+            st.setdefault(code.upper(), []).append(ident)
         _print(pipeline.add_candidate(a.name, state=a.state, party=a.party, slug=a.slug, fec_candidate_ids=a.fec,
                                       state_ids=st, openstates_person_id=a.openstates))
     elif a.cmd == "sync":

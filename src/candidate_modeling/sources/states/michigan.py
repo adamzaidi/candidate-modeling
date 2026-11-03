@@ -24,6 +24,8 @@ from ._common import download, extract_member, read_manifest, sql_str, tempdir, 
 
 STATE = "MI"
 SOURCE = "mi_boe"
+ID_KEY = "committee_ids"        # profile ids.state.<STATE>.<ID_KEY>
+RESULT_ID = "committee_id"     # field in search() results holding that ID
 BASE = "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do"
 LIST_PAGE = "gov.mi.boe.component.cfrexport.page.cfrexportresults"
 FILE_PAGE = "gov.mi.boe.component.cfrexport.page.cfrexportfile"

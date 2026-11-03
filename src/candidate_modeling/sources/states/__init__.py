@@ -1,13 +1,14 @@
-"""State connector registry. Each module exposes: STATE, SOURCE, sync(), search(name), load(con, profile).
+"""State connector registry. Each module exposes: STATE, SOURCE, ID_KEY, RESULT_ID, sync(), is_synced(),
+search(name), load(con, profile).
 
 To add a state: write `<state>.py` with that interface, register it here, add fixture tests.
 """
-from . import michigan, texas
+from . import michigan, pennsylvania, texas
 
-REGISTRY = {m.STATE: m for m in (texas, michigan)}
+REGISTRY = {m.STATE: m for m in (texas, michigan, pennsylvania)}
 
 # Priority order for upcoming connectors (competitive / high-spend states first).
-PLANNED = ["GA", "PA", "AZ", "WI", "NC", "NV", "FL", "OH", "CA", "NY"]
+PLANNED = ["GA", "AZ", "WI", "NC", "NV", "FL", "OH", "CA", "NY"]
 
 
 def get(state: str):

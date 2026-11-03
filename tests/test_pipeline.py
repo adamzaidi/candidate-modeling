@@ -175,3 +175,20 @@ def test_cli_summary(seeded, capsys):
     cli.main(["summary", "talarico", "--jurisdiction", "TX"])
     out = json.loads(capsys.readouterr().out)
     assert out["by_source"][0]["total"] == 6900.0
+
+
+def test_add_candidate_accepts_simple_state_id_lists():
+    pipeline.add_candidate("Josh Shapiro", slug="shapiro", state_ids={"PA": ["20160016"], "MI": ["0521875"]})
+    ids = config.load_profile("shapiro")["ids"]["state"]
+    assert ids == {"PA": {"filer_ids": ["20160016"]}, "MI": {"committee_ids": ["0521875"]}}
+
+
+def test_cli_add_with_state_ids(capsys):
+    cli.main(["add", "James Talarico", "--slug", "talarico", "--state-id", "TX=00081913", "--state-id", "PA=1"])
+    assert config.load_profile("talarico")["ids"]["state"] == {"TX": {"filer_ids": ["00081913"]}, "PA": {"filer_ids": ["1"]}}
+
+
+def test_every_connector_declares_id_fields():
+    from candidate_modeling.sources import states
+    for m in states.REGISTRY.values():
+        assert m.ID_KEY.endswith("_ids") and m.RESULT_ID
