@@ -6,6 +6,7 @@ answer questions about *any* filer in that state without first creating a profil
 import duckdb
 
 from . import store
+from .config import data_dir
 from .pipeline import CAVEATS
 from .sources.states import michigan, texas
 from .sources.states._common import sql_str
@@ -29,6 +30,15 @@ def _state_views(con) -> list[str]:
     return made
 
 
+def _sandbox(con) -> None:
+    """Agent SQL may only read files under data/: no other local files, no network, no extensions.
+    The statement-type check alone is not enough: SELECT read_text('~/.ssh/...') is a SELECT."""
+    con.execute(f"SET allowed_directories=[{sql_str(str(data_dir().resolve()) + '/')}]")
+    con.execute("SET enable_external_access=false")
+    con.execute("SET autoload_known_extensions=false")
+    con.execute("SET lock_configuration=true")
+
+
 def run(sql: str, max_rows: int = MAX_ROWS) -> dict:
     stmts = duckdb.extract_statements(sql)
     if len(stmts) != 1:
@@ -37,6 +47,7 @@ def run(sql: str, max_rows: int = MAX_ROWS) -> dict:
         raise ValueError(f"Read-only: only SELECT/EXPLAIN allowed, got {stmts[0].type.name}.")
     with store.connect(read_only=True) as con:
         _state_views(con)
+        _sandbox(con)
         cur = con.execute(sql)
         cols = [d[0] for d in cur.description]
         rows = cur.fetchmany(max_rows + 1)

@@ -119,6 +119,31 @@ def test_query_rejects_writes(seeded, sql):
         query.run(sql)
 
 
+@pytest.mark.parametrize("sql", [
+    "SELECT * FROM read_text('/etc/hosts')",
+    "SELECT * FROM read_csv('https://example.com/x.csv')",
+    "SELECT * FROM read_text('{root}/.env.example')",
+])
+def test_query_cannot_read_outside_data_dir(seeded, sql):
+    from candidate_modeling.config import ROOT
+    with pytest.raises(Exception, match="(?i)permission|disabled|not allowed"):
+        query.run(sql.format(root=ROOT))
+
+
+@pytest.mark.parametrize("slug", ["../escape", "a/b", "/etc/x", "UPPER", ".hidden"])
+def test_bad_slugs_rejected(slug):
+    with pytest.raises(ValueError, match="Invalid slug"):
+        pipeline.add_candidate("Someone", slug=slug)
+    with pytest.raises(ValueError, match="Invalid slug"):
+        config.load_profile(slug)
+
+
+def test_empty_slug_means_auto_but_cannot_be_loaded():
+    assert pipeline.add_candidate("Some One", slug="")["profile"]["slug"] == "some-one"
+    with pytest.raises(ValueError, match="Invalid slug"):
+        config.load_profile("")
+
+
 def test_query_truncates(seeded):
     r = query.run("SELECT * FROM range(1000)", max_rows=10)
     assert len(r["rows"]) == 10 and r["truncated"] is True

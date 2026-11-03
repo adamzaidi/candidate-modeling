@@ -45,6 +45,15 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,79}")
+
+
+def _profile_path(slug: str) -> Path:
+    if not isinstance(slug, str) or not SLUG_RE.fullmatch(slug):
+        raise ValueError(f"Invalid slug {slug!r}: use lowercase letters, digits, and hyphens.")
+    return candidates_dir() / f"{slug}.yaml"
+
+
 EMPTY_IDS = {
     "fec_candidate_ids": [],
     "fec_committee_ids": [],
@@ -54,7 +63,7 @@ EMPTY_IDS = {
 
 
 def load_profile(slug: str) -> dict:
-    path = candidates_dir() / f"{slug}.yaml"
+    path = _profile_path(slug)
     if not path.exists():
         raise FileNotFoundError(f"No profile for '{slug}'. Create one with find_candidate + add_candidate.")
     with open(path) as f:
@@ -71,7 +80,7 @@ def load_profile(slug: str) -> dict:
 
 
 def save_profile(profile: dict) -> Path:
-    path = candidates_dir() / f"{profile['slug']}.yaml"
+    path = _profile_path(profile["slug"])
     with open(path, "w") as f:
         yaml.safe_dump(profile, f, sort_keys=False, allow_unicode=True)
     return path
