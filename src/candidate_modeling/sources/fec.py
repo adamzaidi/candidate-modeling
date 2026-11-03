@@ -4,6 +4,8 @@ Docs: https://api.open.fec.gov/developers/
 Rate limits: DEMO_KEY is tiny (~30 req/hr); a free api.data.gov key gets 1,000 req/hr.
 Itemized pulls are resumable: the keyset cursor is saved in `fetch_state` after every page.
 """
+import datetime as _dt
+import json
 import time
 
 import requests
@@ -75,18 +77,18 @@ def authorized_committee_ids(candidate_id: str) -> list[str]:
 
 # ---------- totals ----------
 
-def fetch_totals(con, slug: str, candidate_id: str) -> int:
+def fetch_totals(con, slug: str, candidate_id: str) -> dict:
+    """Current totals per cycle; every change is also appended to fec_totals_history."""
     res = _get(f"/candidate/{candidate_id}/totals/", per_page=100, election_full="false")
     rows = [t for t in res["results"] if t.get("cycle")]  # skip whole-election rollups (cycle is null)
+    snapshots = 0
     for t in rows:
-        con.execute(
-            "INSERT OR REPLACE INTO fec_totals VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            [slug, candidate_id, t.get("cycle"), t.get("receipts"), t.get("disbursements"),
-             t.get("last_cash_on_hand_end_period"), t.get("individual_contributions"),
-             t.get("individual_itemized_contributions"), t.get("individual_unitemized_contributions"),
-             t.get("other_political_committee_contributions"), (t.get("coverage_end_date") or "")[:10] or None],
-        )
-    return len(rows)
+        snapshots += store.record_fec_totals(con, [
+            slug, candidate_id, t.get("cycle"), t.get("receipts"), t.get("disbursements"),
+            t.get("last_cash_on_hand_end_period"), t.get("individual_contributions"),
+            t.get("individual_itemized_contributions"), t.get("individual_unitemized_contributions"),
+            t.get("other_political_committee_contributions"), (t.get("coverage_end_date") or "")[:10] or None])
+    return {"cycles": len(rows), "new_snapshots": snapshots}
 
 
 # ---------- itemized receipts ----------
@@ -114,38 +116,55 @@ def normalize(r: dict, slug: str) -> dict:
 
 
 def fetch_itemized(con, slug: str, committee_id: str, cycle: int, max_pages: int | None = None) -> dict:
-    """Page through Schedule A for one committee+cycle, saving after every page. Resumable."""
+    """Page through Schedule A for one committee+cycle, merging after every page. Resumable.
+
+    A "pass" walks every page from the top. Rows are only marked removed when a pass *completes*
+    (anything not seen since the pass started was amended away or deleted at the FEC). Partial passes
+    never remove rows, so a rate-limited run can't make data look deleted.
+    """
     scope = f"{committee_id}:{cycle}"
-    state = store.get_cursor(con, slug, SOURCE, scope)
-    import json
+    saved = store.get_cursor(con, slug, SOURCE, scope)
+    state = json.loads(saved[0]) if saved and saved[0] else {}
+    if "params" not in state:  # v0.2 cursors were the bare API params
+        state = {"params": state, "pass_start": None}
+    loaded = saved[2] if saved else 0
+    if not saved or saved[1]:  # first run, or previous pass finished: start a new pass from the top
+        state, loaded = {"params": {}, "pass_start": store.now().isoformat()}, 0
+    elif not state.get("pass_start"):
+        state["pass_start"] = store.now().isoformat()
 
-    cursor = json.loads(state[0]) if state and state[0] else {}
-    loaded = state[2] if state else 0
-    if state and state[1]:
-        cursor, loaded = {}, 0  # previous run finished; refresh from the top (upserts dedupe)
-
+    totals = {"new": 0, "modified": 0, "unchanged": 0, "restored": 0}
     pages = 0
     while True:
         res = _get("/schedules/schedule_a/", committee_id=committee_id, two_year_transaction_period=cycle,
-                   per_page=100, sort="-contribution_receipt_date", **cursor)
+                   per_page=100, sort="-contribution_receipt_date", **state["params"])
         rows = [normalize(r, slug) for r in res["results"]]
-        loaded += store.upsert_contributions(con, rows)
+        if rows:
+            m = store.merge_rows(con, slug, SOURCE, rows, full=False, scope=scope)
+            loaded += m["staged"]
+            for k in totals:
+                totals[k] += m[k]
         last = (res.get("pagination") or {}).get("last_indexes")
         done = not rows or not last
-        cursor = last or {}
-        store.set_cursor(con, slug, SOURCE, scope, cursor, done, loaded)
+        state["params"] = last or {}
         pages += 1
+        out = {"scope": scope, "rows": loaded, "complete": done, **totals}
         if done:
-            return {"scope": scope, "rows": loaded, "complete": True}
+            out["removed"] = store.mark_removed(
+                con, slug, SOURCE, store.now(), unseen_since=_dt.datetime.fromisoformat(state["pass_start"]),
+                scope_sql="committee_id = ? AND cycle = ?", scope_params=[committee_id, cycle])
+            store.set_cursor(con, slug, SOURCE, scope, {"params": {}, "pass_start": None}, True, loaded)
+            return out
+        store.set_cursor(con, slug, SOURCE, scope, state, False, loaded)
         if max_pages and pages >= max_pages:
-            return {"scope": scope, "rows": loaded, "complete": False}
+            return out
 
 
 def fetch(con, profile: dict, cycles: list[int] | None = None, max_pages: int | None = None) -> dict:
     slug, ids = profile["slug"], profile["ids"]
-    out = {"totals": 0, "itemized": []}
+    out = {"totals": [], "itemized": []}
     for cid in ids["fec_candidate_ids"]:
-        out["totals"] += fetch_totals(con, slug, cid)
+        out["totals"].append({"candidate_id": cid, **fetch_totals(con, slug, cid)})
         committee_ids = ids["fec_committee_ids"] or authorized_committee_ids(cid)
         cyc = cycles or sorted({r[0] for r in con.execute(
             "SELECT cycle FROM fec_totals WHERE candidate_id=?", [cid]).fetchall()})

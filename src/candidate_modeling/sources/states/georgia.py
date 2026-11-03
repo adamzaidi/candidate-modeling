@@ -160,7 +160,6 @@ def load(con, profile: dict) -> dict:
         return {"source": SOURCE, "rows": 0, "note": "Georgia data not synced; run sync_state('GA')"}
     ph = ", ".join("?" for _ in ids)
     ind = ", ".join(f"'{t}'" for t in INDIVIDUAL_TYPES)
-    con.execute("DELETE FROM contributions WHERE candidate_slug=? AND source=?", [profile["slug"], SOURCE])
     sql = f"""
         WITH t AS (
             SELECT *,
@@ -184,6 +183,6 @@ def load(con, profile: dict) -> dict:
                (year(d) + year(d) % 2)::INTEGER
         FROM t
     """
-    n = store.upsert_from_query(con, sql, [*ids, profile["slug"]])
-    return {"source": SOURCE, "rows": n, "filer_ids": ids, "years_available": synced_years(),
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, [*ids, profile["slug"]])  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": ids, "years_available": synced_years(),
             "note": "Georgia coverage starts 2025 (PeachFile); 2017-2024 legacy filings not included."}

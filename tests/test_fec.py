@@ -67,9 +67,10 @@ def test_itemized_paginates_and_is_idempotent():
     with store.connect() as con:
         # first page, stop after 1 page
         r1 = fec.fetch_itemized(con, "talarico", "C00919084", 2026, max_pages=1)
-        assert r1 == {"scope": "C00919084:2026", "rows": 2, "complete": False}
+        assert {k: r1[k] for k in ("scope", "rows", "complete", "new")} == \
+            {"scope": "C00919084:2026", "rows": 2, "complete": False, "new": 2}
         saved = json.loads(store.get_cursor(con, "talarico", "fec", "C00919084:2026")[0])
-        assert saved == cursor
+        assert saved["params"] == cursor and saved["pass_start"]
 
         # resume: next call must send the saved cursor
         responses.replace(responses.GET, url, json=sched_a([row(3)], last=None))
@@ -91,7 +92,7 @@ def test_fetch_totals_skips_whole_election_rollups():
         {"cycle": 2026, "receipts": 146349912.38, "individual_contributions": 120e6,
          "individual_unitemized_contributions": 75299932.74, "coverage_end_date": "2026-10-14T00:00:00"}]})
     with store.connect() as con:
-        assert fec.fetch_totals(con, "talarico", "S6TX00479") == 1
+        assert fec.fetch_totals(con, "talarico", "S6TX00479") == {"cycles": 1, "new_snapshots": 1}
         r = con.execute("SELECT cycle, receipts, coverage_end_date::VARCHAR FROM fec_totals").fetchall()
     assert r == [(2026, 146349912.38, "2026-10-14")]
     assert responses.calls[0].request.params["election_full"] == "false"

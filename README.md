@@ -38,12 +38,32 @@ claude mcp add candidate-modeling -s user -- /path/to/repo/.venv/bin/cm serve
 ```
 
 Tools: `find_candidate`, `add_candidate`, `list_candidates`, `list_supported_states`, `sync_state`,
-`fetch_finances`, `finance_summary`, `compare_candidates`, `describe_schema`, `run_query`.
+`fetch_finances`, `finance_summary` (with `as_of`), `compare_candidates`, `contribution_changes`,
+`fundraising_history`, `describe_schema`, `run_query`.
 
 Typical flow: **find → add → fetch → summary/query**. `run_query` is read-only, takes one SELECT,
 and returns at most 500 rows. Once a state is synced, its entire bulk database is also queryable as
 views (`tx_filers`, `tx_contribs_raw`, `mi_contribs_raw`), so an agent can answer questions about
 any filer in that state without creating a profile first.
+
+## History
+
+Every load is diffed against what's already stored. Nothing is overwritten or deleted:
+
+- **Amendments:** when a filing changes a contribution, the old version moves to `contribution_history`
+  with the dates it was valid.
+- **Removals:** rows that disappear from the source get `removed_at` set and stay queryable. FEC rows are
+  only marked removed after a *complete* pass, so a rate-limited partial pull can't fake deletions.
+- **Point in time:** `cm summary talarico --as-of 2026-10-01`, or in SQL
+  `SELECT ... FROM contributions_as_of(TIMESTAMP '2026-10-01')`.
+- **Change feed:** `cm changes talarico --since 2026-11-01` shows what was added, amended, or removed,
+  with the dollar impact.
+- **Fundraising over time:** `cm history talarico` lists every distinct FEC totals snapshot.
+- `load_runs` logs every load with new / modified / unchanged / removed / restored counts.
+
+Times are **observation time**, meaning when this database saw the data, not when it was filed. History
+starts at each candidate's first load. The storage cost is small: only changed rows are copied, and
+each state's bulk data is never duplicated.
 
 ## Layout
 

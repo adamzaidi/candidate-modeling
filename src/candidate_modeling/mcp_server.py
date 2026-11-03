@@ -12,7 +12,9 @@ from .sources import states
 INSTRUCTIONS = """Campaign finance data for US political candidates (federal via FEC; state via
 per-state connectors: TX, MI so far). Workflow: find_candidate -> add_candidate with the IDs that belong
 to the person (confirm with the user if several plausible matches) -> fetch_finances -> finance_summary,
-compare_candidates, or query (SQL). Call describe_schema before writing SQL. State bulk data must be synced
+compare_candidates, or query (SQL). History: contribution_changes shows amendments/removals between
+loads; finance_summary(as_of=...) and the SQL macro contributions_as_of(ts) show past states.
+Call describe_schema before writing SQL. State bulk data must be synced
 once with sync_state (TX is a ~1 GB download). Always report caveats: FEC small-dollar donations are not
 itemized; numbers are itemized contributions as filed."""
 
@@ -74,10 +76,26 @@ def fetch_finances(slug: str, sources: list[str] | None = None, cycles: list[int
 
 
 @server.tool()
-def finance_summary(slug: str, jurisdiction: str | None = None, cycle: int | None = None) -> dict:
+def finance_summary(slug: str, jurisdiction: str | None = None, cycle: int | None = None,
+                    as_of: str | None = None) -> dict:
     """Totals, in-state share, donor-size mix, top states/employers/occupations, monthly trend, FEC totals.
-    jurisdiction: 'federal' or a state code."""
-    return pipeline.finance_summary(slug, jurisdiction=jurisdiction, cycle=cycle)
+    jurisdiction: 'federal' or a state code. as_of: ISO date/time to see the data as it stood then
+    (observation time: only reaches back to the candidate's first load)."""
+    return pipeline.finance_summary(slug, jurisdiction=jurisdiction, cycle=cycle, as_of=as_of)
+
+
+@server.tool()
+def contribution_changes(slug: str, since: str | None = None, until: str | None = None) -> dict:
+    """What changed between loads: contributions added after the first load, amended (old vs new amount),
+    or removed (amended away / deleted at the source), with dollar impact and the largest examples.
+    since/until: ISO dates. Useful after each refresh, e.g. since the last load."""
+    return pipeline.contribution_changes(slug, since=since, until=until)
+
+
+@server.tool()
+def fundraising_history(slug: str) -> list[dict]:
+    """Every distinct FEC totals snapshot observed (receipts, small-dollar, spending, cash on hand) over time."""
+    return pipeline.fundraising_history(slug)
 
 
 @server.tool()

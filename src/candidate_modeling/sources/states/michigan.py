@@ -145,7 +145,6 @@ def load(con, profile: dict) -> dict:
         return {"source": SOURCE, "rows": 0, "note": "Michigan data not synced; run sync_state('MI')"}
     _, p = _dirs()
     placeholders = ", ".join("?" for _ in ids)
-    con.execute("DELETE FROM contributions WHERE candidate_slug=? AND source=?", [profile["slug"], SOURCE])
     sql = f"""
         SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', cfr_com_id, com_legal_name,
                concat_ws('-', contribution_id, cont_detail_id),
@@ -159,5 +158,5 @@ def load(con, profile: dict) -> dict:
         FROM read_parquet({sql_str(p / 'contributions_*.parquet')})
         WHERE cfr_com_id IN ({placeholders})
     """
-    n = store.upsert_from_query(con, sql, [profile["slug"], *ids])
-    return {"source": SOURCE, "rows": n, "committee_ids": ids, "years_available": synced_years()}
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, [profile["slug"], *ids])  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, "committee_ids": ids, "years_available": synced_years()}

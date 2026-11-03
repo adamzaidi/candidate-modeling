@@ -131,7 +131,6 @@ def load(con, profile: dict) -> dict:
         return {"source": SOURCE, "rows": 0, "note": "Texas data not synced; run sync_state('TX')"}
     _, parts = _dirs()
     placeholders = ", ".join("?" for _ in filer_ids)
-    con.execute("DELETE FROM contributions WHERE candidate_slug=? AND source=?", [profile["slug"], SOURCE])
     sql = f"""
         SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', filerIdent, filerName, contributionInfoId,
                try_strptime(contributionDt, '%Y%m%d')::DATE AS d,
@@ -146,5 +145,5 @@ def load(con, profile: dict) -> dict:
         FROM read_parquet({sql_str(parts / '*.parquet')})
         WHERE filerIdent IN ({placeholders}) AND coalesce(infoOnlyFlag, 'N') <> 'Y'
     """
-    n = store.upsert_from_query(con, sql, [profile["slug"], *filer_ids])
-    return {"source": SOURCE, "rows": n, "filer_ids": filer_ids}
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, [profile["slug"], *filer_ids])  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": filer_ids}

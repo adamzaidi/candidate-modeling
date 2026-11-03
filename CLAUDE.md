@@ -14,6 +14,11 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - FEC itemized pulls save a keyset cursor to `fetch_state` after every page, so a re-run continues
   where it stopped. Upserts are keyed on `sub_id`, the FEC's unique row id (`transaction_id`
   repeats across amendments).
+- History: loaders never DELETE. `store.merge_query` / `merge_rows` diff a staged snapshot against stored rows
+  (content hash), archive replaced versions to `contribution_history`, and with `full=True` mark absent rows
+  `removed_at`. State loads are full snapshots. FEC pages are partial merges, and removal happens only when
+  a pass completes (pass_start is kept in the fetch_state cursor). `contributions_clean` = live and
+  non-memo. `contributions_as_of(ts)` is a table macro. `store.now` is the clock (patched in tests).
 - Profiles (`candidates/*.yaml`) are the source of truth for which IDs belong to a person. Never
   guess IDs. When find_candidate returns several plausible matches, confirm with Adam.
 
@@ -51,7 +56,7 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Secrets: `.env` locally; GitHub secrets `FEC_API_KEY` and `OPENSTATES_API_KEY` for Actions.
 
 ## Status (2026-11-03)
-- Done: FEC, TX, MI, PA, GA, MCP server, CLI, 51 offline tests + 2 live, CI + weekly refresh.
+- Done: FEC, TX, MI, PA, GA, history tracking, MCP server, CLI, 61 offline tests + 2 live, CI + weekly refresh.
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).

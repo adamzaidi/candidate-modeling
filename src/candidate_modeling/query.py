@@ -65,7 +65,8 @@ def describe_schema() -> dict:
     with store.connect() as con:
         views = _state_views(con)
         tables = {}
-        for t in ["contributions", "contributions_clean", "fec_totals", "fetch_state", *views]:
+        for t in ["contributions", "contributions_clean", "contribution_history", "load_runs", "fec_totals",
+                  "fec_totals_history", *views]:
             tables[t] = [f"{r[0]} {r[1]}" for r in con.execute(f"DESCRIBE {t}").fetchall()]
     return {
         "tables": tables,
@@ -73,6 +74,11 @@ def describe_schema() -> dict:
             "contributions": "Normalized itemized contributions for profiled candidates, all sources. "
                              "Use contributions_clean (memo rows removed) for any sum.",
             "fec_totals": "FEC per-cycle summary totals; the only place small-dollar (<$200, unitemized) money appears.",
+            "history": "contributions has first_seen/last_seen/valid_from/removed_at (removed_at set = no longer in "
+                       "the source). contribution_history holds prior versions valid on [valid_from, valid_to). "
+                       "SELECT * FROM contributions_as_of(TIMESTAMP '2026-10-01') reconstructs the data as observed "
+                       "then. load_runs logs every load with new/modified/removed counts. fec_totals_history holds "
+                       "every distinct totals snapshot (fetched_at).",
             "tx_filers / tx_contribs_raw": "Entire Texas Ethics Commission database (superseded rows removed). "
                                            "contributionAmount and contributionDt are VARCHAR (yyyyMMdd).",
             "mi_contribs_raw": "Entire Michigan MiTN contribution export for synced years. All VARCHAR; "

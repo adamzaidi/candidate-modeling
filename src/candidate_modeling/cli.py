@@ -4,7 +4,9 @@
   cm add "James Talarico" --state TX --fec S6TX00479 --state-id TX=00081913
   cm sync TX            | cm sync MI --years 2024 2025 2026
   cm fetch talarico [--sources fec TX] [--max-pages 50]
-  cm summary talarico [--jurisdiction TX]
+  cm summary talarico [--jurisdiction TX] [--as-of 2026-10-01]
+  cm changes talarico [--since 2026-11-01]   # amendments / removals / new filings between loads
+  cm history talarico                        # FEC totals snapshots over time
   cm compare talarico someone-else
   cm query "SELECT ..."
   cm refresh            # sync every state in use, re-fetch every profile (used by CI)
@@ -36,6 +38,9 @@ def main(argv=None):
     s = sub.add_parser("fetch"); s.add_argument("slug"); s.add_argument("--sources", nargs="*")
     s.add_argument("--cycles", nargs="*", type=int); s.add_argument("--max-pages", type=int)
     s = sub.add_parser("summary"); s.add_argument("slug"); s.add_argument("--jurisdiction"); s.add_argument("--cycle", type=int)
+    s.add_argument("--as-of", help="ISO date/time: the data as it stood then")
+    s = sub.add_parser("changes"); s.add_argument("slug"); s.add_argument("--since"); s.add_argument("--until")
+    s = sub.add_parser("history"); s.add_argument("slug")
     s = sub.add_parser("compare"); s.add_argument("slugs", nargs="+"); s.add_argument("--jurisdiction")
     s = sub.add_parser("query"); s.add_argument("sql")
     sub.add_parser("schema")
@@ -60,7 +65,11 @@ def main(argv=None):
     elif a.cmd == "fetch":
         _print(pipeline.fetch_finances(a.slug, sources=a.sources, cycles=a.cycles, max_pages=a.max_pages))
     elif a.cmd == "summary":
-        _print(pipeline.finance_summary(a.slug, jurisdiction=a.jurisdiction, cycle=a.cycle))
+        _print(pipeline.finance_summary(a.slug, jurisdiction=a.jurisdiction, cycle=a.cycle, as_of=a.as_of))
+    elif a.cmd == "changes":
+        _print(pipeline.contribution_changes(a.slug, since=a.since, until=a.until))
+    elif a.cmd == "history":
+        _print(pipeline.fundraising_history(a.slug))
     elif a.cmd == "compare":
         _print(pipeline.compare_candidates(a.slugs, jurisdiction=a.jurisdiction))
     elif a.cmd == "query":

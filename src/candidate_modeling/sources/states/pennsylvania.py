@@ -154,7 +154,6 @@ def load(con, profile: dict) -> dict:
     if not is_synced():
         return {"source": SOURCE, "rows": 0, "note": "Pennsylvania data not synced; run sync_state('PA')"}
     ph = ", ".join("?" for _ in ids)
-    con.execute("DELETE FROM contributions WHERE candidate_slug=? AND source=?", [profile["slug"], SOURCE])
     sql = f"""
         WITH latest AS (   -- newest submission of each report period; drops superseded originals
             SELECT arg_max(CampaignfinanceID, SubmittedDate) AS report_id, any_value(FILERNAME) AS filer_name
@@ -183,5 +182,5 @@ def load(con, profile: dict) -> dict:
                (coalesce(year(d), EYEAR::INTEGER) + coalesce(year(d), EYEAR::INTEGER) % 2)::INTEGER
         FROM u WHERE try_cast(amt AS DOUBLE) <> 0
     """
-    n = store.upsert_from_query(con, sql, [*ids, *ids, profile["slug"], ORG_PATTERN])
-    return {"source": SOURCE, "rows": n, "filer_ids": ids, "years_available": synced_years()}
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, [*ids, *ids, profile["slug"], ORG_PATTERN])  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": ids, "years_available": synced_years()}
