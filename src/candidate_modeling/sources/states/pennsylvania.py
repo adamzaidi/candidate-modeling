@@ -147,23 +147,46 @@ def search(name: str) -> list[dict]:
             for r in rows]
 
 
-def load(con, profile: dict) -> dict:
-    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get("filer_ids") or []
-    if not ids:
-        return {"source": SOURCE, "rows": 0, "note": "no PA filer_ids in profile"}
-    if not is_synced():
-        return {"source": SOURCE, "rows": 0, "note": "Pennsylvania data not synced; run sync_state('PA')"}
-    ph = ", ".join("?" for _ in ids)
+SCOPE = {
+    "name": "Pennsylvania Department of State",
+    "url": "https://www.pa.gov/agencies/dos/resources/voting-and-elections-resources/campaign-finance-data",
+    "covers": "State and local candidates and committees filing with the Department of State.",
+    "excludes": ["Federal and party-office candidates", "County-level filers who file only with their county"],
+    "history_from": "2000",
+    "refresh": "One zip per election year; sync defaults to the last 4 years (pass years= for more).",
+    "rules": [
+        "Rebuilt with a tolerant parser (unescaped inner quotes, raw line breaks, cp1252 lines); unparseable rows are counted, never silently dropped.",
+        "Up to three (date, amount) pairs per row are unpivoted into separate contributions.",
+        "Only the latest-submitted report per (filer, year, reporting cycle) counts; amended originals are dropped.",
+        "Candidates usually raise money through a committee with a different FILERID; profile the committee.",
+        "Sections IA/IC are from political committees; IB/ID from individuals; IIF/IIG in-kind.",
+    ],
+    "known_gaps": [
+        "No unique contribution ID: transaction IDs are row positions, so cross-sync history for PA is approximate.",
+        "Donor type outside committee sections is a name-pattern guess.",
+        "The filer file's MONETARY/INKIND columns do not reconcile with itemized sums.",
+    ],
+}
+
+
+def covered_years() -> list[int]:
+    return synced_years()
+
+
+def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
+    flt = f"IN ({', '.join('?' for _ in ids)})" if ids is not None else None
+    filer_where = f"WHERE FILERID {flt}" if flt else ""
+    contrib_where = f"WHERE c.FilerID {flt}" if flt else ""
     sql = f"""
         WITH latest AS (   -- newest submission of each report period; drops superseded originals
             SELECT arg_max(CampaignfinanceID, SubmittedDate) AS report_id, any_value(FILERNAME) AS filer_name
-            FROM read_parquet({_glob('filer')}) WHERE FILERID IN ({ph})
+            FROM read_parquet({_glob('filer')}) {filer_where}
             GROUP BY FILERID, EYEAR, CYCLE
         ),
         c AS (
             SELECT c.*, l.filer_name FROM read_parquet({_glob('contrib')}) c
             JOIN latest l ON c.CampaignFinanceID = l.report_id
-            WHERE c.FilerID IN ({ph})
+            {contrib_where}
         ),
         u AS (
             SELECT *, 1 AS slot, CONTDATE1 AS dt, CONTAMT1 AS amt FROM c
@@ -182,5 +205,16 @@ def load(con, profile: dict) -> dict:
                (coalesce(year(d), EYEAR::INTEGER) + coalesce(year(d), EYEAR::INTEGER) % 2)::INTEGER
         FROM u WHERE try_cast(amt AS DOUBLE) <> 0
     """
-    m = store.merge_query(con, profile["slug"], SOURCE, sql, [*ids, *ids, profile["slug"], ORG_PATTERN])  # full snapshot: absent rows -> removed
-    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": ids, "years_available": synced_years()}
+    ids = list(ids) if ids is not None else []
+    return sql, [*ids, *ids, slug, ORG_PATTERN]
+
+
+def load(con, profile: dict) -> dict:
+    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
+    if not ids:
+        return {"source": SOURCE, "rows": 0, "note": "no PA filer_ids in profile"}
+    if not is_synced():
+        return {"source": SOURCE, "rows": 0, "note": "Pennsylvania data not synced; run sync_state('PA')"}
+    sql, params = normalized_sql(ids, profile["slug"])
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}

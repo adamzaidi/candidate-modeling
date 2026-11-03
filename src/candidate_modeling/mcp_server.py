@@ -6,17 +6,21 @@ Typical agent flow:
 """
 from mcp.server.mcpserver import MCPServer
 
-from . import config, pipeline, query
+from . import config, elections, pipeline, query, scope
 from .sources import states
 
-INSTRUCTIONS = """Campaign finance data for US political candidates (federal via FEC; state via
-per-state connectors: TX, MI so far). Workflow: find_candidate -> add_candidate with the IDs that belong
-to the person (confirm with the user if several plausible matches) -> fetch_finances -> finance_summary,
-compare_candidates, or query (SQL). History: contribution_changes shows amendments/removals between
-loads; finance_summary(as_of=...) and the SQL macro contributions_as_of(ts) show past states.
-Call describe_schema before writing SQL. State bulk data must be synced
-once with sync_state (TX is a ~1 GB download). Always report caveats: FEC small-dollar donations are not
-itemized; numbers are itemized contributions as filed."""
+INSTRUCTIONS = f"""Campaign finance data for US political candidates: federal via FEC, state via connectors for
+{", ".join(sorted(states.REGISTRY))} (planned next: {", ".join(states.PLANNED)}).
+Workflow: find_candidate -> add_candidate with the IDs that belong to the person (ask the user if several
+plausible matches) -> fetch_finances -> finance_summary, compare_candidates, compare_elections, or run_query.
+State bulk data must be synced once with sync_state (TX is a ~1 GB download).
+History: contribution_changes shows amendments/removals between loads; finance_summary(as_of=...) and the SQL
+macro contributions_as_of(ts) show past states. compare_elections compares election windows (e.g. 2025 vs
+2026) statewide or for profiled candidates.
+Call data_scope to see what is covered on this machine, and describe_schema before writing SQL.
+
+RULES (always apply; cite rule ids when explaining numbers):
+""" + scope.rules_text()
 
 server = MCPServer("candidate-modeling", instructions=INSTRUCTIONS)
 
@@ -102,6 +106,25 @@ def fundraising_history(slug: str) -> list[dict]:
 def compare_candidates(slugs: list[str], jurisdiction: str | None = None, cycle: int | None = None) -> list[dict]:
     """Side-by-side headline metrics for several profiled candidates."""
     return pipeline.compare_candidates(slugs, jurisdiction=jurisdiction, cycle=cycle)
+
+
+@server.tool()
+def data_scope() -> dict:
+    """What the data covers and the rules for using it: global rules (with ids), per-source coverage,
+    exclusions, known gaps, and which years are actually synced on this machine. Read before analysis."""
+    return scope.data_scope()
+
+
+@server.tool()
+def compare_elections(years: list[int], state: str | None = None, slugs: list[str] | None = None,
+                      checkpoints: list[int] | None = None) -> dict:
+    """Compare money across election windows (contributions after the prior November election day through
+    this one). Pass state= for every committee in a synced state, or slugs= for profiled candidates.
+    Returns per-year totals, individuals-only totals, small-dollar, donors, in-state share, cumulative money at
+    days-before-election checkpoints, top recipients, top donors and concentration, coverage status, and
+    year-over-year changes (skipped when a window is not fully covered)."""
+    kw = {"checkpoints": tuple(checkpoints)} if checkpoints else {}
+    return elections.compare_elections(years, state=state, slugs=slugs, **kw)
 
 
 @server.tool()

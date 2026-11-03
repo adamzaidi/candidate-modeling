@@ -152,14 +152,33 @@ def search(name: str) -> list[dict]:
             for r in rows]
 
 
-def load(con, profile: dict) -> dict:
-    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
-    if not ids:
-        return {"source": SOURCE, "rows": 0, "note": "no GA filer_ids in profile"}
-    if not is_synced():
-        return {"source": SOURCE, "rows": 0, "note": "Georgia data not synced; run sync_state('GA')"}
-    ph = ", ".join("?" for _ in ids)
+SCOPE = {
+    "name": "Georgia Government Transparency & Campaign Finance Commission (PeachFile)",
+    "url": "https://efile.ethics.ga.gov/",
+    "covers": "State candidates and non-candidate committees filing in PeachFile.",
+    "excludes": ["Federal candidates (use FEC)", "Filings in the legacy system (2017-2024)"],
+    "history_from": "January 2025",
+    "refresh": "Daily extract via the PeachFile API; sync skips when dataExtractedDate is unchanged.",
+    "rules": [
+        "Only Contribution and Return Contribution rows load; loans, loan payments, and interest are excluded.",
+        "Returned contributions are negative amounts.",
+        "Amended reports repeat transactions; the most recently filed copy wins.",
+        "Unitemized contributions are lump sums typed 'unitemized' (no donor, excluded from geography shares).",
+    ],
+    "known_gaps": [
+        "Nothing before 2025: the 2025 election window (from Nov 2024) is only partly covered.",
+        "Some prominent filers (e.g. Raffensperger, Bottoms) are absent from the bulk export; cause unknown.",
+    ],
+}
+
+
+def covered_years() -> list[int]:
+    return [y for y in synced_years() if y >= FIRST_YEAR]
+
+
+def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
     ind = ", ".join(f"'{t}'" for t in INDIVIDUAL_TYPES)
+    flt = f"filing_entity_id IN ({', '.join('?' for _ in ids)}) AND " if ids is not None else ""
     sql = f"""
         WITH t AS (
             SELECT *,
@@ -167,7 +186,7 @@ def load(con, profile: dict) -> dict:
                      * try_cast(regexp_replace(transaction_amount, '[$,()]', '', 'g') AS DOUBLE) AS amt,
                    try_strptime(transaction_date, '%m/%d/%Y')::DATE AS d
             FROM read_parquet({_glob()})
-            WHERE filing_entity_id IN ({ph}) AND transaction_type IN ('Contribution', 'Return Contribution')
+            WHERE {flt}transaction_type IN ('Contribution', 'Return Contribution')
             QUALIFY row_number() OVER (PARTITION BY filing_entity_id, transaction_id
                                        ORDER BY try_strptime(report_filed_date, '%m/%d/%Y') DESC NULLS LAST) = 1
         )
@@ -183,6 +202,15 @@ def load(con, profile: dict) -> dict:
                (year(d) + year(d) % 2)::INTEGER
         FROM t
     """
-    m = store.merge_query(con, profile["slug"], SOURCE, sql, [*ids, profile["slug"]])  # full snapshot: absent rows -> removed
-    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": ids, "years_available": synced_years(),
-            "note": "Georgia coverage starts 2025 (PeachFile); 2017-2024 legacy filings not included."}
+    return sql, [*(ids or []), slug]
+
+
+def load(con, profile: dict) -> dict:
+    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
+    if not ids:
+        return {"source": SOURCE, "rows": 0, "note": "no GA filer_ids in profile"}
+    if not is_synced():
+        return {"source": SOURCE, "rows": 0, "note": "Georgia data not synced; run sync_state('GA')"}
+    sql, params = normalized_sql(ids, profile["slug"])
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}

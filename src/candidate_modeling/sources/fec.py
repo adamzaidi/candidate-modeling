@@ -17,6 +17,24 @@ BASE = "https://api.open.fec.gov/v1"
 SOURCE = "fec"
 _sleep = time.sleep  # patched in tests
 
+SCOPE = {
+    "name": "Federal Election Commission (FEC) API",
+    "url": "https://api.open.fec.gov/developers/",
+    "covers": "Federal candidates (President, Senate, House): per-cycle totals and itemized receipts of their "
+              "authorized committees (designation P/A).",
+    "excludes": ["Joint fundraising, party, and outside committees (unless added as committee IDs)",
+                 "Individual donations under $200 per cycle (not itemized; appear only in totals)"],
+    "history_from": "1970s (per cycle, as far as the FEC API has data)",
+    "refresh": "Pulled per candidate; itemized pulls are resumable and rate-limited (1,000 req/hr with a key).",
+    "rules": [
+        "Rows are keyed by sub_id (unique); memo rows (memo_code X) are sub-items and excluded from sums.",
+        "Whole-election totals rollups (cycle = null) are skipped; totals are per two-year cycle.",
+        "Rows are marked removed only after a complete pass over a committee-cycle.",
+    ],
+    "known_gaps": ["Itemized data lags summary totals by weeks; newest itemized dates trail coverage_end_date.",
+                   "Only cycles/committees that have been fetched are present; check fetch_state.complete."],
+}
+
 
 class RateLimited(RuntimeError):
     pass

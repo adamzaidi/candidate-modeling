@@ -46,6 +46,20 @@ and returns at most 500 rows. Once a state is synced, its entire bulk database i
 views (`tx_filers`, `tx_contribs_raw`, `mi_contribs_raw`), so an agent can answer questions about
 any filer in that state without creating a profile first.
 
+## Comparing elections
+
+```bash
+cm compare-elections 2025 2026 --state PA          # every committee in the state
+cm compare-elections 2022 2026 --slugs talarico    # profiled candidates
+```
+
+Each year is an election window: contributions after the previous November election day, through this
+one. For each window you get totals (all, individuals only, small-dollar, unitemized), approximate
+donors, in-state share, money raised by 300/180/90/30/7/0 days before the election, top recipients, top
+donors and concentration, and coverage status. Year-over-year changes are only computed when both windows
+are fully covered. See the rules below: election-window, align-by-days, coverage-first, reporting-lag,
+self-funding, statewide-double-count.
+
 ## History
 
 Every load is diffed against what's already stored. Nothing is overwritten or deleted:
@@ -80,23 +94,103 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 .github/workflows/              tests on push; weekly refresh using repo secrets
 ```
 
-## Reading the numbers correctly
+<!-- BEGIN GENERATED: data-scope (edit src/candidate_modeling/scope.py, then run `cm docs`) -->
+## Data scope and rules
 
-- **Small-dollar money isn't itemized federally.** The FEC only itemizes donors who give more than
-  $200 per cycle, so small-dollar totals appear in `fec_totals`, not in `contributions`.
-- **Exclude memo rows.** Sum over `contributions_clean`; FEC memo rows are sub-items of other rows.
-- **FEC itemized data lags summary totals by weeks.** Filings are processed slowly, so the newest
-  itemized rows can trail `coverage_end_date`.
-- **Texas:** superseded (amended) rows are dropped. Special-session and daily pre-election reports
-  are skipped because their contributions are re-reported on the next regular report.
-- **Michigan:** amendments may not be reflected in the export. Committees under $5k/yr aren't
-  required to e-file.
-- **Pennsylvania:** amended reports replace originals (latest submission per filer/year/period wins).
-  Donor type comes from the report section; for non-committee rows it's a name-pattern guess.
-- **Georgia:** only the 2025+ PeachFile system is covered. Some prominent filers are missing from the
-  bulk export, so check the efile site before concluding someone raised nothing. Unitemized lump sums
-  are typed `unitemized` and left out of geography shares.
-- Employer and occupation are self-reported free text and not yet mapped to industries.
+### Time
+
+- **two-clocks**: There are two time axes. Transaction time (`date`) is when a contribution was made; use it to compare elections. Observation time (`first_seen`, `valid_from`, `removed_at`, `as_of`) is when this database saw a version of a row; use it to ask what the filings said at a past moment. Observation history starts at each source's first load and never reaches back further.
+- **election-window**: For election comparisons a contribution belongs to election year Y if dated after the reference election day of Y-1 and on or before that of Y. This keeps odd-year elections separate from even-year ones.
+- **cycle-bucket**: `cycle` is a two-year, even-year bucket (FEC style). It folds odd-year money into the next even year, so never use it to compare an odd-year election with an even-year one.
+- **reference-day**: Reference election day = the Tuesday after the first Monday in November. Every year has one, but only jurisdictions with contests that year (e.g. PA judicial and municipal, TX constitutional amendments) actually vote; primaries and runoffs are not modeled yet.
+
+### Money
+
+- **itemized-only**: Totals are itemized contributions as filed. FEC small-dollar money (under $200 per donor per cycle) is not itemized and appears only in fec_totals; Georgia lump sums are typed 'unitemized'.
+- **clean-view**: Sum over contributions_clean (or contributions_as_of): they exclude memo rows (FEC sub-items) and rows that have been removed at the source.
+- **loans-excluded**: Loans, loan payments, and interest are not contributions and are excluded.
+- **returns-negative**: Returned contributions are negative amounts where the source reports them.
+- **in-state-share**: In-state share counts only rows with a known donor state; unitemized lump sums are left out.
+- **nominal-dollars**: Amounts are nominal dollars; nothing is inflation-adjusted.
+- **statewide-double-count**: Statewide totals add up money received by every committee, so committee-to-committee transfers (PAC to candidate, party to candidate) and conduits that forward earmarked gifts (e.g. ActBlue Texas) are counted at each hop. Prefer the individuals-only total when comparing statewide money.
+- **self-funding**: A candidate's money to their own campaign is often typed 'individual' (e.g. $200M from Richard Jackson to Jackson for Governor in GA, 2026). Check top_donors and pct_from_top_donor before reading individual totals as grassroots support.
+
+### Comparing elections
+
+- **coverage-first**: Only compare windows that both sources cover completely. compare_elections reports coverage per year and marks partial windows; never present a partial window as a decline.
+- **reporting-lag**: Filings trail the calendar. Near and just after election day the latest window is incomplete (the final reports are not filed yet), so its late checkpoints undercount; compare_elections flags this as reporting_incomplete.
+- **align-by-days**: Align elections by days before election day and compare cumulative money at the same checkpoints (300, 180, 90, 30, 7, 0 days out), especially when one election is still in progress.
+- **like-with-like**: Compare the same candidate, the same office, or the same jurisdiction. Odd-year and even-year ballots have different offices on them, so statewide odd-versus-even comparisons measure different contests.
+
+### Identity
+
+- **no-guessed-ids**: Never guess source IDs. When find_candidate returns several plausible matches, ask the user.
+- **committee-ids**: In some states (e.g. PA, MI) money is filed under a committee whose ID differs from the candidate's filer ID; profile the committee.
+- **names-not-linked**: Donor names are free text and are not linked across sources or years; the same person can appear under several spellings.
+
+### Sources
+
+#### FEC: [Federal Election Commission (FEC) API](https://api.open.fec.gov/developers/)
+
+- **Covers:** Federal candidates (President, Senate, House): per-cycle totals and itemized receipts of their authorized committees (designation P/A).
+- **History from:** 1970s (per cycle, as far as the FEC API has data)
+- **Refresh:** Pulled per candidate; itemized pulls are resumable and rate-limited (1,000 req/hr with a key).
+- **Excludes:** Joint fundraising, party, and outside committees (unless added as committee IDs); Individual donations under $200 per cycle (not itemized; appear only in totals)
+- **Rule:** Rows are keyed by sub_id (unique); memo rows (memo_code X) are sub-items and excluded from sums.
+- **Rule:** Whole-election totals rollups (cycle = null) are skipped; totals are per two-year cycle.
+- **Rule:** Rows are marked removed only after a complete pass over a committee-cycle.
+- **Known gap:** Itemized data lags summary totals by weeks; newest itemized dates trail coverage_end_date.
+- **Known gap:** Only cycles/committees that have been fetched are present; check fetch_state.complete.
+
+#### TX: [Texas Ethics Commission (TEC)](https://www.ethics.state.tx.us/search/cf/)
+
+- **Covers:** State and some local candidates, officeholders, and PACs that file with the TEC.
+- **History from:** July 2000 (electronic filings)
+- **Refresh:** Daily full-database zip; sync re-downloads only when Last-Modified changes.
+- **Excludes:** Federal candidates (use FEC); Local filers who file only with a city or county
+- **Rule:** Only contribs_##.csv load; cont_ss/cont_t (special-session, daily pre-election) are re-reported later.
+- **Rule:** Rows with infoOnlyFlag = 'Y' were superseded by an amended report and are dropped.
+- **Rule:** Candidates file under their own filer ID (filerTypeCd COH).
+- **Known gap:** Paper-era filings before July 2000 are not in the database.
+
+#### MI: [Michigan Bureau of Elections (MiTN)](https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?page=gov.mi.boe.component.cfrexport.page.cfrexportdownload)
+
+- **Covers:** All committees filing with the state: candidate, PAC, party, ballot question, independent expenditure.
+- **History from:** 1998 (includes data migrated from the old MERTS system)
+- **Refresh:** One file per year, refreshed daily; sync defaults to the last 4 years (pass years= for more).
+- **Excludes:** Federal candidates (use FEC); Committees below the $5,000/yr e-filing threshold may be absent
+- **Rule:** Data rows carry a trailing tab and stray quotes; parsed with explicit columns and quoting disabled.
+- **Rule:** Candidate committees are com_type = 'Candidate'; money is filed under the committee ID.
+- **Known gap:** Amendments may not be reflected in the export; verify key figures against the filed statement.
+
+#### PA: [Pennsylvania Department of State](https://www.pa.gov/agencies/dos/resources/voting-and-elections-resources/campaign-finance-data)
+
+- **Covers:** State and local candidates and committees filing with the Department of State.
+- **History from:** 2000
+- **Refresh:** One zip per election year; sync defaults to the last 4 years (pass years= for more).
+- **Excludes:** Federal and party-office candidates; County-level filers who file only with their county
+- **Rule:** Rebuilt with a tolerant parser (unescaped inner quotes, raw line breaks, cp1252 lines); unparseable rows are counted, never silently dropped.
+- **Rule:** Up to three (date, amount) pairs per row are unpivoted into separate contributions.
+- **Rule:** Only the latest-submitted report per (filer, year, reporting cycle) counts; amended originals are dropped.
+- **Rule:** Candidates usually raise money through a committee with a different FILERID; profile the committee.
+- **Rule:** Sections IA/IC are from political committees; IB/ID from individuals; IIF/IIG in-kind.
+- **Known gap:** No unique contribution ID: transaction IDs are row positions, so cross-sync history for PA is approximate.
+- **Known gap:** Donor type outside committee sections is a name-pattern guess.
+- **Known gap:** The filer file's MONETARY/INKIND columns do not reconcile with itemized sums.
+
+#### GA: [Georgia Government Transparency & Campaign Finance Commission (PeachFile)](https://efile.ethics.ga.gov/)
+
+- **Covers:** State candidates and non-candidate committees filing in PeachFile.
+- **History from:** January 2025
+- **Refresh:** Daily extract via the PeachFile API; sync skips when dataExtractedDate is unchanged.
+- **Excludes:** Federal candidates (use FEC); Filings in the legacy system (2017-2024)
+- **Rule:** Only Contribution and Return Contribution rows load; loans, loan payments, and interest are excluded.
+- **Rule:** Returned contributions are negative amounts.
+- **Rule:** Amended reports repeat transactions; the most recently filed copy wins.
+- **Rule:** Unitemized contributions are lump sums typed 'unitemized' (no donor, excluded from geography shares).
+- **Known gap:** Nothing before 2025: the 2025 election window (from Nov 2024) is only partly covered.
+- **Known gap:** Some prominent filers (e.g. Raffensperger, Bottoms) are absent from the bulk export; cause unknown.
+<!-- END GENERATED: data-scope -->
 
 ## Adding a state
 

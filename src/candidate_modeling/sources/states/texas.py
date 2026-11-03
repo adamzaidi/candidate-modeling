@@ -123,14 +123,35 @@ def search(name: str) -> list[dict]:
     ]
 
 
-def load(con, profile: dict) -> dict:
-    filer_ids = (profile["ids"].get("state", {}).get(STATE) or {}).get("filer_ids") or []
-    if not filer_ids:
-        return {"source": SOURCE, "rows": 0, "note": "no TX filer_ids in profile"}
-    if not is_synced():
-        return {"source": SOURCE, "rows": 0, "note": "Texas data not synced; run sync_state('TX')"}
+SCOPE = {
+    "name": "Texas Ethics Commission (TEC)",
+    "url": "https://www.ethics.state.tx.us/search/cf/",
+    "covers": "State and some local candidates, officeholders, and PACs that file with the TEC.",
+    "excludes": ["Federal candidates (use FEC)", "Local filers who file only with a city or county"],
+    "history_from": "July 2000 (electronic filings)",
+    "refresh": "Daily full-database zip; sync re-downloads only when Last-Modified changes.",
+    "rules": [
+        "Only contribs_##.csv load; cont_ss/cont_t (special-session, daily pre-election) are re-reported later.",
+        "Rows with infoOnlyFlag = 'Y' were superseded by an amended report and are dropped.",
+        "Candidates file under their own filer ID (filerTypeCd COH).",
+    ],
+    "known_gaps": ["Paper-era filings before July 2000 are not in the database."],
+}
+
+
+def covered_years() -> list[int]:
+    """Calendar years fully present once synced (the TEC zip is the whole database)."""
+    from datetime import date
+    return list(range(2001, date.today().year + 1)) if is_synced() else []
+
+
+def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
+    """SELECT yielding store.COLUMN_NAMES for the given filers (None = every filer in Texas)."""
     _, parts = _dirs()
-    placeholders = ", ".join("?" for _ in filer_ids)
+    where, params = "coalesce(infoOnlyFlag, 'N') <> 'Y'", [slug]
+    if ids is not None:
+        where += f" AND filerIdent IN ({', '.join('?' for _ in ids)})"
+        params += list(ids)
     sql = f"""
         SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', filerIdent, filerName, contributionInfoId,
                try_strptime(contributionDt, '%Y%m%d')::DATE AS d,
@@ -143,7 +164,17 @@ def load(con, profile: dict) -> dict:
                contributorEmployer, contributorOccupation, false,
                (year(d) + year(d) % 2)::INTEGER
         FROM read_parquet({sql_str(parts / '*.parquet')})
-        WHERE filerIdent IN ({placeholders}) AND coalesce(infoOnlyFlag, 'N') <> 'Y'
+        WHERE {where}
     """
-    m = store.merge_query(con, profile["slug"], SOURCE, sql, [profile["slug"], *filer_ids])  # full snapshot: absent rows -> removed
-    return {"source": SOURCE, "rows": m["staged"], "changes": m, "filer_ids": filer_ids}
+    return sql, params
+
+
+def load(con, profile: dict) -> dict:
+    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
+    if not ids:
+        return {"source": SOURCE, "rows": 0, "note": "no TX filer_ids in profile"}
+    if not is_synced():
+        return {"source": SOURCE, "rows": 0, "note": "Texas data not synced; run sync_state('TX')"}
+    sql, params = normalized_sql(ids, profile["slug"])
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}

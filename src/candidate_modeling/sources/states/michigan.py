@@ -137,14 +137,31 @@ def search(name: str) -> list[dict]:
             for r in rows.itertuples()]
 
 
-def load(con, profile: dict) -> dict:
-    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get("committee_ids") or []
-    if not ids:
-        return {"source": SOURCE, "rows": 0, "note": "no MI committee_ids in profile"}
-    if not synced_years():
-        return {"source": SOURCE, "rows": 0, "note": "Michigan data not synced; run sync_state('MI')"}
+SCOPE = {
+    "name": "Michigan Bureau of Elections (MiTN)",
+    "url": "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?page=gov.mi.boe.component.cfrexport.page.cfrexportdownload",
+    "covers": "All committees filing with the state: candidate, PAC, party, ballot question, independent expenditure.",
+    "excludes": ["Federal candidates (use FEC)", "Committees below the $5,000/yr e-filing threshold may be absent"],
+    "history_from": "1998 (includes data migrated from the old MERTS system)",
+    "refresh": "One file per year, refreshed daily; sync defaults to the last 4 years (pass years= for more).",
+    "rules": [
+        "Data rows carry a trailing tab and stray quotes; parsed with explicit columns and quoting disabled.",
+        "Candidate committees are com_type = 'Candidate'; money is filed under the committee ID.",
+    ],
+    "known_gaps": ["Amendments may not be reflected in the export; verify key figures against the filed statement."],
+}
+
+
+def covered_years() -> list[int]:
+    return synced_years()
+
+
+def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
     _, p = _dirs()
-    placeholders = ", ".join("?" for _ in ids)
+    where, params = "true", [slug]
+    if ids is not None:
+        where = f"cfr_com_id IN ({', '.join('?' for _ in ids)})"
+        params += list(ids)
     sql = f"""
         SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', cfr_com_id, com_legal_name,
                concat_ws('-', contribution_id, cont_detail_id),
@@ -156,7 +173,17 @@ def load(con, profile: dict) -> dict:
                nullif(trim(contributor_employer), ''), nullif(trim(contributor_occupation), ''), false,
                (year(d) + year(d) % 2)::INTEGER
         FROM read_parquet({sql_str(p / 'contributions_*.parquet')})
-        WHERE cfr_com_id IN ({placeholders})
+        WHERE {where}
     """
-    m = store.merge_query(con, profile["slug"], SOURCE, sql, [profile["slug"], *ids])  # full snapshot: absent rows -> removed
-    return {"source": SOURCE, "rows": m["staged"], "changes": m, "committee_ids": ids, "years_available": synced_years()}
+    return sql, params
+
+
+def load(con, profile: dict) -> dict:
+    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
+    if not ids:
+        return {"source": SOURCE, "rows": 0, "note": "no MI committee_ids in profile"}
+    if not is_synced():
+        return {"source": SOURCE, "rows": 0, "note": "Michigan data not synced; run sync_state('MI')"}
+    sql, params = normalized_sql(ids, profile["slug"])
+    m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
+    return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}

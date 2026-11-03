@@ -19,6 +19,12 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
   `removed_at`. State loads are full snapshots. FEC pages are partial merges, and removal happens only when
   a pass completes (pass_start is kept in the fetch_state cursor). `contributions_clean` = live and
   non-memo. `contributions_as_of(ts)` is a table macro. `store.now` is the clock (patched in tests).
+- **Rules and scope live in `scope.py` (global RULES with ids) and each connector's `SCOPE` dict.** The README
+  "Data scope and rules" section is generated from them (`cm docs`; a test fails if stale), and the MCP
+  instructions embed the rules. Never document a data rule only in prose; add it to the registry.
+- Election comparisons (`elections.py`) use transaction time: window(Y) = (election_day(Y-1), election_day(Y)].
+  Statewide comparisons run connectors' `normalized_sql(None)` over the bulk parquet (no profile needed).
+  `covered_years()` per connector drives coverage-first; deltas are skipped for partial windows.
 - Profiles (`candidates/*.yaml`) are the source of truth for which IDs belong to a person. Never
   guess IDs. When find_candidate returns several plausible matches, confirm with Adam.
 
@@ -56,7 +62,7 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Secrets: `.env` locally; GitHub secrets `FEC_API_KEY` and `OPENSTATES_API_KEY` for Actions.
 
 ## Status (2026-11-03)
-- Done: FEC, TX, MI, PA, GA, history tracking, MCP server, CLI, 61 offline tests + 2 live, CI + weekly refresh.
+- Done: FEC, TX, MI, PA, GA, history tracking, election comparisons, scope registry, MCP server, CLI, 84 offline tests + 2 live, CI + weekly refresh.
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).

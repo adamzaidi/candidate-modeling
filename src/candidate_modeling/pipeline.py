@@ -146,7 +146,7 @@ def finance_summary(slug: str, jurisdiction: str | None = None, cycle: int | Non
         }
         # home-state params come before the WHERE params
         # only rows with a known donor state count (unitemized lump sums have none)
-        geo = con.execute(f"""SELECT round(100.0 * sum(amount) FILTER (WHERE state = ?)
+        geo = con.execute(f"""SELECT round(100.0 * coalesce(sum(amount) FILTER (WHERE state = ?), 0)
                                            / nullif(sum(amount) FILTER (WHERE state IS NOT NULL), 0), 1),
                                      round(100.0 * count(*) FILTER (WHERE state = ?)
                                            / nullif(count(*) FILTER (WHERE state IS NOT NULL), 0), 1)
