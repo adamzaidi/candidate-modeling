@@ -55,6 +55,14 @@ def tx_zip(tmp_path) -> bytes:
          "filerHoldOfficeDistrict": "50", "filerFilerpersStatusCd": "CURRENT_OFFICEHOLDER", "filerEffStartDt": "20230101"},
         {"filerIdent": "00099999", "filerTypeCd": "GPAC", "filerName": "Talarico Fan PAC"},  # not a candidate
         {"filerIdent": "00055555", "filerTypeCd": "COH", "filerName": "Smith, Someone"},
+        {"filerIdent": "00077777", "filerTypeCd": "SPAC", "filerName": "Texans for Talarico"},
+        {"filerIdent": "00088888", "filerTypeCd": "SPAC", "filerName": "Stop Talarico"},
+    ]
+    spacs = [
+        {"spacFilerIdent": "00077777", "spacFilerTypeCd": "SPAC", "spacPositionCd": "SUPPORT",
+         "candidateFilerIdent": "00081913", "candidateSeekOfficeCd": ""},
+        {"spacFilerIdent": "00088888", "spacFilerTypeCd": "SPAC", "spacPositionCd": "OPPOSE",
+         "candidateFilerIdent": "00081913", "candidateSeekOfficeCd": "STATEREP"},
     ]
     contribs_01 = [
         tx_contrib(1, amount="100.00"),
@@ -63,10 +71,14 @@ def tx_zip(tmp_path) -> bytes:
         tx_contrib(4, amount="999.00", info="Y"),  # superseded: must be dropped
         tx_contrib(5, amount="77.00", filer="00055555"),  # someone else
     ]
-    contribs_02 = [tx_contrib(6, amount="1000.00", contributionDt="20250301")]
+    contribs_02 = [tx_contrib(6, amount="1000.00", contributionDt="20250301"),
+                   tx_contrib(8, filer="00077777", amount="700.00", contributionDt="20260201"),
+                   tx_contrib(9, filer="00088888", amount="300.00", contributionDt="20260201")]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr("filers.csv", _csv_bytes(TX_FILER_HEADER, filers))
+        zf.writestr("spacs.csv", _csv_bytes(["recordType"] + __import__("candidate_modeling.sources.states.texas",
+                    fromlist=["SPAC_COLS"]).SPAC_COLS, spacs))
         zf.writestr("contribs_01.csv", _csv_bytes(TX_CONTRIB_HEADER, contribs_01))
         zf.writestr("contribs_02.csv", _csv_bytes(TX_CONTRIB_HEADER, contribs_02))
         zf.writestr("cont_ss.csv", _csv_bytes(TX_CONTRIB_HEADER, [tx_contrib(7, amount="123456.00")]))  # ignored
@@ -109,8 +121,8 @@ def mi_zip() -> bytes:
 
 # ---------- Pennsylvania fixture zip ----------
 
-def _pa_filer(report_id, filer_id, name, ftype="2", cycle="1", submitted="2026-04-07", amend="N"):
-    return (f'{report_id},"{filer_id}",2026,{submitted},{cycle},"{amend}","N","{ftype}","{name}","GOV","-1","DEM",'
+def _pa_filer(report_id, filer_id, name, ftype="2", cycle="1", submitted="2026-04-07", amend="N", office="GOV"):
+    return (f'{report_id},"{filer_id}",2026,{submitted},{cycle},"{amend}","N","{ftype}","{name}","{office}","-1","DEM",'
             f'"","","Philadelphia","PA","19110","46","2025520221",0.00,0.00,0.00')
 
 
@@ -128,7 +140,7 @@ def pa_zip() -> bytes:
         _pa_filer(101, "2026C0403", "SHAPIRO, JOSHUA D", ftype="1"),
         _pa_filer(200, "20160016", "Shapiro for Pennsylvania", cycle="2", submitted="2026-05-08"),
         _pa_filer(201, "20160016", "Shapiro for Pennsylvania", cycle="2", submitted="2026-06-01", amend="Y"),
-        _pa_filer(300, "99999999", "UPPER DARBY FIREFIGHTERS \"PAC\""),
+        _pa_filer(300, "99999999", "UPPER DARBY FIREFIGHTERS \"PAC\"", office=""),
     ]) + "\r\n"
     contribs = [",".join(pa.CONTRIB_COLS),
         _pa_contrib(100, "20160016", "Jane Doe"),

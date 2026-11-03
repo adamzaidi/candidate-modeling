@@ -25,9 +25,17 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "`cycle` is a two-year, even-year bucket (FEC style). It folds odd-year money into the next even year, "
          "so never use it to compare an odd-year election with an even-year one."),
         ("reference-day",
-         "Reference election day = the Tuesday after the first Monday in November. Every year has one, but only "
-         "jurisdictions with contests that year (e.g. PA judicial and municipal, TX constitutional amendments) "
-         "actually vote; primaries and runoffs are not modeled yet."),
+         "General election day comes from reference/elections.yaml when the state/year is listed, otherwise the "
+         "Tuesday after the first Monday in November. Every year has one, but only jurisdictions with contests "
+         "that year actually vote (see each calendar entry's scope: statewide or local)."),
+        ("stage-window",
+         "Stages split the year: primary = after last year's general through the primary; primary_runoff = after "
+         "the primary through the runoff; general_campaign = after the last primary/runoff through the general; "
+         "general_runoff = after the general through its runoff. Primary and runoff dates come only from "
+         "reference/elections.yaml, where every date has a source; a year with no entry reports no_election."),
+        ("calendar-sourced",
+         "Never infer an election date from a pattern. Add dates to reference/elections.yaml only with a source "
+         "URL; tests reject entries without one."),
     ],
     "money": [
         ("itemized-only",
@@ -65,6 +73,22 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "Compare the same candidate, the same office, or the same jurisdiction. Odd-year and even-year ballots "
          "have different offices on them, so statewide odd-versus-even comparisons measure different contests."),
     ],
+    "offices": [
+        ("office-taxonomy",
+         "Offices are normalized into shared categories (see OFFICE_CATEGORIES). Raw labels are always kept as "
+         "office_raw; unmapped codes become 'unknown' rather than being guessed."),
+        ("office-snapshot",
+         "A committee's office is its latest office on file, not necessarily the office it was raising for in an "
+         "earlier window. A candidate who switched races carries the new office back in time."),
+        ("linked-committees",
+         "Some states route a candidate's money through a separate committee. Texas specific-purpose committees "
+         "that the TEC SPAC index links to exactly one candidate (SUPPORT/ASSIST) count as that candidate's "
+         "committee and take their office (e.g. Texans for Greg Abbott -> governor). Committees that oppose, or "
+         "back several candidates, stay 'pac'."),
+        ("office-not-ballot",
+         "Money raised by officeholders who are not on the ballot that year still counts under their office; "
+         "office totals measure money held by that office's committees, not only active races."),
+    ],
     "identity": [
         ("no-guessed-ids",
          "Never guess source IDs. When find_candidate returns several plausible matches, ask the user."),
@@ -75,6 +99,35 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "Donor names are free text and are not linked across sources or years; the same person can appear "
          "under several spellings."),
     ],
+}
+
+
+# Normalized office categories. Every connector's committees_sql() maps raw office labels onto these;
+# raw values are always kept in office_raw. Non-candidate committees get their committee kind instead.
+OFFICE_CATEGORIES = {
+    "governor": "Governor",
+    "lieutenant_governor": "Lieutenant governor",
+    "attorney_general": "Attorney general",
+    "secretary_of_state": "Secretary of state",
+    "statewide_other": "Other statewide executive (comptroller, treasurer, auditor, agriculture, land, railroad, "
+                       "insurance, labor, school superintendent, public service commission)",
+    "state_senate": "State senate",
+    "state_house": "State house / assembly",
+    "state_board": "Elected state boards (board of education, university regents and trustees)",
+    "supreme_court": "Courts of last resort (state supreme court; TX Court of Criminal Appeals)",
+    "appellate_court": "Intermediate appellate courts (TX/GA/MI courts of appeals; PA Superior and Commonwealth)",
+    "trial_court": "Trial and lower courts (district, circuit, superior in GA, common pleas, probate, magisterial)",
+    "prosecutor": "District attorneys and solicitors general",
+    "county_office": "County offices (commissioners, sheriff, clerks, tax commissioner, coroner)",
+    "municipal_office": "City offices (mayor, council, aldermen)",
+    "school_board": "Local school boards",
+    "party_office": "Party offices (state or county party chair)",
+    "federal": "Federal office filed with a state agency (rare; federal money is in FEC)",
+    "pac": "Non-candidate committees: PACs, independent expenditure and issue committees",
+    "party_committee": "Party committees (state, county, district)",
+    "ballot_measure": "Ballot question committees",
+    "other_committee": "Other committees (caucuses, direct-expenditure filers, unclassified committee types)",
+    "unknown": "Candidate committee whose office code is missing or not yet mapped (raw code kept in office_raw)",
 }
 
 
@@ -103,7 +156,9 @@ def data_scope() -> dict:
     sources = _sources()
     for code, info in live.items():
         sources[code] = {**sources[code], **info}
+    from . import elections
     return {"rules": {g: [{"id": i, "rule": t} for i, t in items] for g, items in RULES.items()},
+            "office_categories": OFFICE_CATEGORIES, "election_calendar": elections.calendar_summary(),
             "sources": sources, "planned_states": PLANNED}
 
 
@@ -114,13 +169,18 @@ BEGIN, END = "<!-- BEGIN GENERATED: data-scope (edit src/candidate_modeling/scop
 
 
 def render_markdown() -> str:
-    titles = {"time": "Time", "money": "Money", "comparisons": "Comparing elections", "identity": "Identity"}
+    titles = {"time": "Time", "money": "Money", "comparisons": "Comparing elections", "offices": "Offices",
+              "identity": "Identity"}
     out = ["## Data scope and rules", ""]
     for group, items in RULES.items():
         out.append(f"### {titles.get(group, group)}")
         out.append("")
         out += [f"- **{rid}**: {text}" for rid, text in items]
         out.append("")
+    out.append("### Office categories")
+    out.append("")
+    out += [f"- `{k}`: {v}" for k, v in OFFICE_CATEGORIES.items()]
+    out.append("")
     out.append("### Sources")
     out.append("")
     for code, s in _sources().items():

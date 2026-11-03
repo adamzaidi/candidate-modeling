@@ -155,7 +155,7 @@ def test_state_bulk_views_queryable(seeded, tx_zip):
     responses.get(texas.ZIP_URL, body=tx_zip)
     texas.sync()
     r = query.run("SELECT count(*) FROM tx_contribs_raw")
-    assert r["rows"] == [[5]]  # superseded row hidden; other filers visible
+    assert r["rows"] == [[7]]  # superseded row hidden; other filers visible
     assert "tx_filers" in query.describe_schema()["tables"]
 
 

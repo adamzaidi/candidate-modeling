@@ -20,7 +20,7 @@ import requests
 
 from ...config import USER_AGENT, state_dir
 from ... import store
-from ._common import download, extract_member, read_manifest, sql_str, tempdir, write_manifest
+from ._common import case_map, download, extract_member, read_manifest, sql_str, tempdir, write_manifest
 
 STATE = "MI"
 SOURCE = "mi_boe"
@@ -187,3 +187,36 @@ def load(con, profile: dict) -> dict:
     sql, params = normalized_sql(ids, profile["slug"])
     m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
     return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}
+
+
+# ---------- committees / offices (rule office-taxonomy) ----------
+
+OFFICE_MAP = {
+    "Governor": "governor", "Lt. Governor": "lieutenant_governor", "Attorney General": "attorney_general",
+    "Secretary of State": "secretary_of_state", "State Senator": "state_senate",
+    "Representative in State Legislature": "state_house",
+    "Member of the State Board of Education": "state_board", "Regent of the University of Michigan": "state_board",
+    "Governor of Wayne State University": "state_board", "Trustee of Michigan State University": "state_board",
+    "Justice of Supreme Court": "supreme_court", "Judge of Court of Appeals": "appellate_court",
+    "Judge of District Court": "trial_court", "Judge of Probate Court": "trial_court",
+    "Judge of Circuit Court": "trial_court", "Judge of Municipal Court": "trial_court",
+}
+KIND_MAP = {"Candidate": "candidate", "Independent": "pac", "Political": "pac", "Independent Expenditure": "pac",
+            "County Political Party": "party_committee", "District Political Party": "party_committee",
+            "State Political Party": "party_committee", "Ballot Question": "ballot_measure", "Caucus": "other_committee"}
+
+
+def committees_sql() -> str:
+    _, p = _dirs()
+    return f"""
+        WITH f AS (
+            SELECT cfr_com_id AS committee_id,
+                   arg_max(com_legal_name, doc_stmnt_year) AS committee_name,
+                   arg_max(com_type, doc_stmnt_year) AS ctype,
+                   arg_max(nullif(trim(can_office_sought), ''), doc_stmnt_year) AS office_raw,
+                   arg_max(nullif(trim(can_district_sought), ''), doc_stmnt_year) AS district
+            FROM read_parquet({sql_str(p / 'contributions_*.parquet')}) GROUP BY cfr_com_id)
+        SELECT committee_id, committee_name, k.kind, office_raw,
+               CASE WHEN k.kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE k.kind END AS office_category,
+               district
+        FROM f, LATERAL (SELECT {case_map("ctype", KIND_MAP, "'other_committee'")} AS kind) k"""

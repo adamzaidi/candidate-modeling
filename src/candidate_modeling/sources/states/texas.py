@@ -18,7 +18,7 @@ import duckdb
 
 from ...config import state_dir
 from ... import store
-from ._common import download, extract_member, read_manifest, remote_last_modified, sql_str, tempdir, write_manifest
+from ._common import case_map, download, extract_member, read_manifest, remote_last_modified, sql_str, tempdir, write_manifest
 
 STATE = "TX"
 SOURCE = "tx_tec"
@@ -30,6 +30,9 @@ CONTRIB_FILE = re.compile(r"^contribs_\d+\.csv$")
 FILER_COLS = ["filerIdent", "filerTypeCd", "filerName", "filerPersentTypeCd", "filerNameLast", "filerNameFirst",
               "ctaSeekOfficeCd", "ctaSeekOfficeDistrict", "filerHoldOfficeCd", "filerHoldOfficeDistrict",
               "filerFilerpersStatusCd", "filerEffStartDt", "filerEffStopDt"]
+SPAC_COLS = ["spacFilerIdent", "spacFilerTypeCd", "spacFilerName", "spacCommitteeStatusCd", "spacPositionCd",
+             "candidateFilerIdent", "candidateFilerName", "candidateHoldOfficeCd", "candidateHoldOfficeDistrict",
+             "candidateSeekOfficeCd", "candidateSeekOfficeDistrict"]
 CONTRIB_COLS = ["reportInfoIdent", "infoOnlyFlag", "filerIdent", "filerTypeCd", "filerName", "contributionInfoId",
                 "contributionDt", "contributionAmount", "contributorPersentTypeCd", "contributorNameOrganization",
                 "contributorNameLast", "contributorNameFirst", "contributorStreetCity", "contributorStreetStateCd",
@@ -62,6 +65,11 @@ def build_parquet(zip_path, out_dir=None) -> dict:
         f = extract_member(zf, "filers.csv", tmp_path)
         con.execute(f"COPY (SELECT {', '.join(FILER_COLS)} FROM {_csv(f)}) TO {sql_str(filers_out)} (FORMAT parquet)")
         f.unlink()
+        if "spacs.csv" in names:  # SPAC -> supported candidate links (office for candidate-run SPACs)
+            f = extract_member(zf, "spacs.csv", tmp_path)
+            con.execute(f"COPY (SELECT {', '.join(SPAC_COLS)} FROM {_csv(f)}) "
+                        f"TO {sql_str(parts.parent / 'spacs.parquet')} (FORMAT parquet)")
+            f.unlink()
         for name in sorted(n for n in names if CONTRIB_FILE.match(n)):
             f = extract_member(zf, name, tmp_path)
             out = parts / (f.stem + ".parquet")
@@ -133,7 +141,9 @@ SCOPE = {
     "rules": [
         "Only contribs_##.csv load; cont_ss/cont_t (special-session, daily pre-election) are re-reported later.",
         "Rows with infoOnlyFlag = 'Y' were superseded by an amended report and are dropped.",
-        "Candidates file under their own filer ID (filerTypeCd COH).",
+        "Candidates file under their own filer ID (filerTypeCd COH), and often also raise through a specific-purpose "
+        "committee linked in the TEC SPAC index (rule linked-committees).",
+        "Offices come from filers.csv (office sought, else held) and spacs.csv links.",
     ],
     "known_gaps": ["Paper-era filings before July 2000 are not in the database."],
 }
@@ -178,3 +188,71 @@ def load(con, profile: dict) -> dict:
     sql, params = normalized_sql(ids, profile["slug"])
     m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
     return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}
+
+
+# ---------- committees / offices (rule office-taxonomy) ----------
+
+OFFICE_MAP = {
+    "GOVERNOR": "governor", "LTGOVERNOR": "lieutenant_governor", "ATTYGEN": "attorney_general", "SOS": "secretary_of_state",
+    "COMPTROLLER": "statewide_other", "LANDCOMM": "statewide_other", "AGRICULTUR": "statewide_other",
+    "RRCOMM": "statewide_other", "RRCOMM_UNEXPIRED": "statewide_other",
+    "STATESEN": "state_senate", "STATEREP": "state_house", "STATEEDU": "state_board",
+    "JUSTICE_SC": "supreme_court", "CHIEFJUSTICE_SC": "supreme_court",
+    "JUDGE_COCA": "supreme_court", "PRESIDINGJUDGE_COCA": "supreme_court",   # Court of Criminal Appeals: last resort
+    "JUSTICE_COA": "appellate_court", "CHIEFJUSTICE_COA": "appellate_court",
+    "JUDGEDIST": "trial_court", "JUDGEDIST_MULTI": "trial_court", "JUDGEDIST_FAMILY": "trial_court",
+    "JUDGE_BUS": "trial_court", "CRIMINAL_JUDGEDIST": "trial_court", "CRIMINAL_JUDGEDIST_DAL": "trial_court",
+    "CRIMINAL_JUDGEDIST_JEF": "trial_court", "CRIMINAL_JUDGEDIST_TAR": "trial_court", "JUDGESTATCO": "trial_court",
+    "JUDGE_SENIOR": "trial_court",
+    "DISTATTY": "prosecutor", "DISTATTY_MULTI": "prosecutor", "CRIMINAL_DISTATTY": "prosecutor",
+    "PARTYCHAIRCO": "party_office", "STATE_CHAIR": "party_office",
+}
+KIND_MAP = {"COH": "candidate", "JCOH": "candidate", "SCC": "candidate", "SPK": "candidate",
+            "GPAC": "pac", "SPAC": "pac", "MPAC": "pac", "ASIFSPAC": "pac", "JSPC": "pac", "SCPC": "pac",
+            "CEC": "party_committee", "MCEC": "party_committee", "PTYCORP": "party_committee"}
+
+
+def committees_sql() -> str:
+    """One row per filer: committee_id, committee_name, kind, office_raw, office_category, district, linked_candidate_id.
+
+    Texas candidates often raise through a specific-purpose committee (e.g. "Texans for Greg Abbott") that has no
+    office of its own. The TEC SPAC index links SPACs to the candidates they SUPPORT/ASSIST/OPPOSE; a SPAC that
+    supports or assists exactly one candidate is treated as that candidate's committee (rule linked-committees).
+    """
+    _, parts = _dirs()
+    f = sql_str(parts.parent / "filers.parquet")
+    spacs = parts.parent / "spacs.parquet"
+    links = (f"""SELECT spacFilerIdent AS committee_id, count(DISTINCT candidateFilerIdent) AS n,
+                       any_value(candidateFilerIdent) AS cand,
+                       any_value(coalesce(nullif(candidateSeekOfficeCd, ''), nullif(candidateHoldOfficeCd, ''))) AS cand_office,
+                       any_value(coalesce(nullif(candidateSeekOfficeDistrict, ''), nullif(candidateHoldOfficeDistrict, ''))) AS cand_district
+                FROM read_parquet({sql_str(spacs)}) WHERE spacPositionCd IN ('SUPPORT', 'ASSIST') GROUP BY 1"""
+             if spacs.exists() else
+             "SELECT NULL::VARCHAR AS committee_id, 0 AS n, NULL AS cand, NULL AS cand_office, NULL AS cand_district WHERE false")
+    return f"""
+        WITH f AS (
+            SELECT filerIdent AS committee_id,
+                   arg_max(filerName, coalesce(filerEffStartDt, '')) AS committee_name,
+                   arg_max(filerTypeCd, coalesce(filerEffStartDt, '')) AS ftype,
+                   arg_max(coalesce(nullif(ctaSeekOfficeCd, ''), nullif(filerHoldOfficeCd, '')),
+                           coalesce(filerEffStartDt, '')) AS office_raw,
+                   arg_max(coalesce(nullif(ctaSeekOfficeDistrict, ''), nullif(filerHoldOfficeDistrict, '')),
+                           coalesce(filerEffStartDt, '')) AS district
+            FROM read_parquet({f}) GROUP BY filerIdent),
+        l AS ({links}),
+        j AS (
+            SELECT f.*, {case_map("f.ftype", KIND_MAP, "'other_committee'")} AS base_kind,
+                   l.n, l.cand, coalesce(cf.office_raw, l.cand_office) AS cand_office,
+                   coalesce(cf.district, l.cand_district) AS cand_district
+            FROM f LEFT JOIN l USING (committee_id) LEFT JOIN f cf ON cf.committee_id = l.cand),
+        k AS (
+            SELECT committee_id, committee_name,
+                   CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN 'candidate' ELSE base_kind END AS kind,
+                   CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN cand_office ELSE office_raw END AS office_raw,
+                   CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN cand_district ELSE district END AS district,
+                   CASE WHEN base_kind = 'pac' AND n = 1 THEN cand END AS linked_candidate_id
+            FROM j)
+        SELECT committee_id, committee_name, kind, office_raw,
+               CASE WHEN kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE kind END AS office_category,
+               district, linked_candidate_id
+        FROM k"""

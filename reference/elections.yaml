@@ -1,0 +1,60 @@
+# Election calendar used by compare_elections(stage=...).
+#
+# Rules for editing (enforced by tests/test_calendar.py):
+# - Every entry needs: state, date (YYYY-MM-DD), type, scope, description, source (URL).
+# - Only add dates you have verified against a source. Never infer a date from a pattern.
+# - type: primary | primary_runoff | general | general_runoff | presidential_primary | special
+# - scope: statewide (contests on every ballot in the state) | local (only some jurisdictions vote)
+# - General election days must equal the Tuesday after the first Monday in November.
+# - status: held (default) | scheduled (not yet happened as of when it was added)
+
+# ---------------- Texas ----------------
+- {state: TX, date: 2022-03-01, type: primary, scope: statewide, description: "Primary", source: "https://ballotpedia.org/Texas_elections,_2022"}
+- {state: TX, date: 2022-05-24, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://ballotpedia.org/Texas_elections,_2022"}
+- {state: TX, date: 2022-11-08, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G22/TX"}
+- {state: TX, date: 2024-03-05, type: primary, scope: statewide, description: "Primary (incl. presidential)", source: "https://www.thegreenpapers.com/G24/TX"}
+- {state: TX, date: 2024-05-28, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://www.thegreenpapers.com/G24/TX"}
+- {state: TX, date: 2024-11-05, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G24/TX"}
+- {state: TX, date: 2025-11-04, type: general, scope: statewide, description: "Constitutional amendment election (17 propositions)", source: "https://en.wikipedia.org/wiki/2025_Texas_constitutional_amendment_election"}
+- {state: TX, date: 2026-03-03, type: primary, scope: statewide, description: "March primary", source: "https://www.sos.texas.gov/elections/laws/current-elections-information.shtml"}
+- {state: TX, date: 2026-05-26, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://www.sos.texas.gov/about/newsreleases/2026/051326.shtml"}
+- {state: TX, date: 2026-11-03, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G26/TX"}
+
+# ---------------- Georgia ----------------
+- {state: GA, date: 2022-05-24, type: primary, scope: statewide, description: "General primary", source: "https://ballotpedia.org/Georgia%27s_2nd_Congressional_District_election,_2022_(June_21_Republican_primary_runoff)"}
+- {state: GA, date: 2022-06-21, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://branch.vote/elections/state/ga/2022-primary-elections-runoff"}
+- {state: GA, date: 2022-11-08, type: general, scope: statewide, description: "General election", source: "https://ballotpedia.org/Georgia%27s_2nd_Congressional_District_election,_2022_(June_21_Republican_primary_runoff)"}
+- {state: GA, date: 2024-03-12, type: presidential_primary, scope: statewide, description: "Presidential preference primary", source: "https://www.gpb.org/news/2023/05/04/when-georgias-2024-presidential-primary-march-12"}
+- {state: GA, date: 2024-05-21, type: primary, scope: statewide, description: "General primary", source: "https://www.thegreenpapers.com/G24/GA"}
+- {state: GA, date: 2024-06-18, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://www.thegreenpapers.com/G24/GA"}
+- {state: GA, date: 2024-11-05, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G24/GA"}
+- {state: GA, date: 2024-12-03, type: general_runoff, scope: statewide, description: "General runoff", source: "https://www.thegreenpapers.com/G24/GA"}
+- {state: GA, date: 2025-06-17, type: primary, scope: statewide, description: "Public Service Commission special primary", source: "https://ballotpedia.org/Georgia_Public_Service_Commission_election,_2025"}
+- {state: GA, date: 2025-07-15, type: primary_runoff, scope: statewide, description: "PSC Democratic primary runoff", source: "https://ballotpedia.org/Georgia_Public_Service_Commission_election,_2025"}
+- {state: GA, date: 2025-11-04, type: general, scope: statewide, description: "PSC special general + municipal elections", source: "https://ballotpedia.org/Georgia_Public_Service_Commission_election,_2025"}
+- {state: GA, date: 2026-05-19, type: primary, scope: statewide, description: "General primary", source: "https://www.thegreenpapers.com/G26/GA"}
+- {state: GA, date: 2026-06-16, type: primary_runoff, scope: statewide, description: "Primary runoff", source: "https://accessnorthga.com/news/polls-are-now-open-across-georgia-for-primary-runoff-elections-2026"}
+- {state: GA, date: 2026-11-03, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G26/GA"}
+- {state: GA, date: 2026-12-01, type: general_runoff, scope: statewide, description: "General runoff (if needed)", source: "https://www.thegreenpapers.com/G26/GA", status: scheduled}
+
+# ---------------- Pennsylvania ----------------
+- {state: PA, date: 2022-05-17, type: primary, scope: statewide, description: "Primary", source: "https://www.thegreenpapers.com/G22/PA"}
+- {state: PA, date: 2022-11-08, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G22/PA"}
+- {state: PA, date: 2024-04-23, type: primary, scope: statewide, description: "Primary (incl. presidential)", source: "https://www.spotlightpa.org/news/2024/01/pennsylvania-2024-presidential-primary-election-date/"}
+- {state: PA, date: 2024-11-05, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G24/PA"}
+- {state: PA, date: 2025-05-20, type: primary, scope: statewide, description: "Municipal and judicial primary", source: "https://ballotpedia.org/Pennsylvania_elections,_2025"}
+- {state: PA, date: 2025-11-04, type: general, scope: statewide, description: "Municipal election; Supreme Court retention (Donohue, Dougherty, Wecht)", source: "https://ballotpedia.org/Pennsylvania_elections,_2025"}
+- {state: PA, date: 2026-05-19, type: primary, scope: statewide, description: "Primary", source: "https://www.pa.gov/agencies/vote/elections/upcoming-elections"}
+- {state: PA, date: 2026-11-03, type: general, scope: statewide, description: "General election", source: "https://ballotpedia.org/Pennsylvania_elections,_2026"}
+
+# ---------------- Michigan ----------------
+- {state: MI, date: 2022-08-02, type: primary, scope: statewide, description: "August primary", source: "https://www.pbs.org/newshour/politics/2022-michigan-primary-election-results"}
+- {state: MI, date: 2022-11-08, type: general, scope: statewide, description: "General election (federal election day, 2 U.S.C. 7)", source: "https://www.law.cornell.edu/uscode/text/2/7"}
+- {state: MI, date: 2024-02-27, type: presidential_primary, scope: statewide, description: "Presidential primary", source: "https://www.9and10news.com/2023/11/09/house-adjourning-for-the-year-presidential-primary-will-be-on-feb-27/"}
+- {state: MI, date: 2024-08-06, type: primary, scope: statewide, description: "August primary", source: "https://clickondetroit.com/news/local/2024/08/07/2024-michigan-primary-election-results-for-aug-6"}
+- {state: MI, date: 2024-11-05, type: general, scope: statewide, description: "General election (federal election day, 2 U.S.C. 7)", source: "https://www.law.cornell.edu/uscode/text/2/7"}
+- {state: MI, date: 2025-05-06, type: special, scope: local, description: "May special local election", source: "https://www.michigan.gov/sos/elections/voting"}
+- {state: MI, date: 2025-08-05, type: primary, scope: local, description: "August local primary (e.g. Detroit mayor)", source: "https://www.branch.vote/elections/state/mi/2025-michigan-primary-election"}
+- {state: MI, date: 2025-11-04, type: general, scope: local, description: "Municipal general election (no statewide contests)", source: "https://www.branch.vote/elections/state/mi/2025-michigan-general-election"}
+- {state: MI, date: 2026-08-04, type: primary, scope: statewide, description: "August primary", source: "https://www.thegreenpapers.com/G26/MI"}
+- {state: MI, date: 2026-11-03, type: general, scope: statewide, description: "General election", source: "https://www.thegreenpapers.com/G26/MI"}

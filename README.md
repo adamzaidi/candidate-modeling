@@ -49,9 +49,21 @@ any filer in that state without creating a profile first.
 ## Comparing elections
 
 ```bash
-cm compare-elections 2025 2026 --state PA          # every committee in the state
-cm compare-elections 2022 2026 --slugs talarico    # profiled candidates
+cm compare-elections 2025 2026 --state PA                          # every committee in the state
+cm compare-elections 2022 2026 --state TX --office governor        # one office
+cm compare-elections 2022 2026 --state TX --group-by office        # every office side by side
+cm compare-elections 2022 2026 --state TX --stage primary          # money before the primary
+cm compare-elections 2022 2026 --slugs talarico                    # profiled candidates
 ```
+
+**Stages** (`--stage`): `general` (default, last general through this one), `primary`, `primary_runoff`,
+`general_campaign` (after the last primary or runoff through the general), and `general_runoff`. Primary
+and runoff dates come from [`reference/elections.yaml`](reference/elections.yaml). Every date there cites
+a source, and tests reject entries without one. To add a year or state, add sourced lines to that file.
+
+**Offices** (`--group-by office`, `--office`): each state's raw office labels are mapped onto one shared
+set of categories (governor, state_house, supreme_court, pac, ...; full list below). Results report
+`pct_unclassified_office`, so you can see how much money couldn't be placed.
 
 Each year is an election window: contributions after the previous November election day, through this
 one. For each window you get totals (all, individuals only, small-dollar, unitemized), approximate
@@ -102,7 +114,9 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - **two-clocks**: There are two time axes. Transaction time (`date`) is when a contribution was made; use it to compare elections. Observation time (`first_seen`, `valid_from`, `removed_at`, `as_of`) is when this database saw a version of a row; use it to ask what the filings said at a past moment. Observation history starts at each source's first load and never reaches back further.
 - **election-window**: For election comparisons a contribution belongs to election year Y if dated after the reference election day of Y-1 and on or before that of Y. This keeps odd-year elections separate from even-year ones.
 - **cycle-bucket**: `cycle` is a two-year, even-year bucket (FEC style). It folds odd-year money into the next even year, so never use it to compare an odd-year election with an even-year one.
-- **reference-day**: Reference election day = the Tuesday after the first Monday in November. Every year has one, but only jurisdictions with contests that year (e.g. PA judicial and municipal, TX constitutional amendments) actually vote; primaries and runoffs are not modeled yet.
+- **reference-day**: General election day comes from reference/elections.yaml when the state/year is listed, otherwise the Tuesday after the first Monday in November. Every year has one, but only jurisdictions with contests that year actually vote (see each calendar entry's scope: statewide or local).
+- **stage-window**: Stages split the year: primary = after last year's general through the primary; primary_runoff = after the primary through the runoff; general_campaign = after the last primary/runoff through the general; general_runoff = after the general through its runoff. Primary and runoff dates come only from reference/elections.yaml, where every date has a source; a year with no entry reports no_election.
+- **calendar-sourced**: Never infer an election date from a pattern. Add dates to reference/elections.yaml only with a source URL; tests reject entries without one.
 
 ### Money
 
@@ -122,11 +136,43 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - **align-by-days**: Align elections by days before election day and compare cumulative money at the same checkpoints (300, 180, 90, 30, 7, 0 days out), especially when one election is still in progress.
 - **like-with-like**: Compare the same candidate, the same office, or the same jurisdiction. Odd-year and even-year ballots have different offices on them, so statewide odd-versus-even comparisons measure different contests.
 
+### Offices
+
+- **office-taxonomy**: Offices are normalized into shared categories (see OFFICE_CATEGORIES). Raw labels are always kept as office_raw; unmapped codes become 'unknown' rather than being guessed.
+- **office-snapshot**: A committee's office is its latest office on file, not necessarily the office it was raising for in an earlier window. A candidate who switched races carries the new office back in time.
+- **linked-committees**: Some states route a candidate's money through a separate committee. Texas specific-purpose committees that the TEC SPAC index links to exactly one candidate (SUPPORT/ASSIST) count as that candidate's committee and take their office (e.g. Texans for Greg Abbott -> governor). Committees that oppose, or back several candidates, stay 'pac'.
+- **office-not-ballot**: Money raised by officeholders who are not on the ballot that year still counts under their office; office totals measure money held by that office's committees, not only active races.
+
 ### Identity
 
 - **no-guessed-ids**: Never guess source IDs. When find_candidate returns several plausible matches, ask the user.
 - **committee-ids**: In some states (e.g. PA, MI) money is filed under a committee whose ID differs from the candidate's filer ID; profile the committee.
 - **names-not-linked**: Donor names are free text and are not linked across sources or years; the same person can appear under several spellings.
+
+### Office categories
+
+- `governor`: Governor
+- `lieutenant_governor`: Lieutenant governor
+- `attorney_general`: Attorney general
+- `secretary_of_state`: Secretary of state
+- `statewide_other`: Other statewide executive (comptroller, treasurer, auditor, agriculture, land, railroad, insurance, labor, school superintendent, public service commission)
+- `state_senate`: State senate
+- `state_house`: State house / assembly
+- `state_board`: Elected state boards (board of education, university regents and trustees)
+- `supreme_court`: Courts of last resort (state supreme court; TX Court of Criminal Appeals)
+- `appellate_court`: Intermediate appellate courts (TX/GA/MI courts of appeals; PA Superior and Commonwealth)
+- `trial_court`: Trial and lower courts (district, circuit, superior in GA, common pleas, probate, magisterial)
+- `prosecutor`: District attorneys and solicitors general
+- `county_office`: County offices (commissioners, sheriff, clerks, tax commissioner, coroner)
+- `municipal_office`: City offices (mayor, council, aldermen)
+- `school_board`: Local school boards
+- `party_office`: Party offices (state or county party chair)
+- `federal`: Federal office filed with a state agency (rare; federal money is in FEC)
+- `pac`: Non-candidate committees: PACs, independent expenditure and issue committees
+- `party_committee`: Party committees (state, county, district)
+- `ballot_measure`: Ballot question committees
+- `other_committee`: Other committees (caucuses, direct-expenditure filers, unclassified committee types)
+- `unknown`: Candidate committee whose office code is missing or not yet mapped (raw code kept in office_raw)
 
 ### Sources
 
@@ -150,7 +196,8 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - **Excludes:** Federal candidates (use FEC); Local filers who file only with a city or county
 - **Rule:** Only contribs_##.csv load; cont_ss/cont_t (special-session, daily pre-election) are re-reported later.
 - **Rule:** Rows with infoOnlyFlag = 'Y' were superseded by an amended report and are dropped.
-- **Rule:** Candidates file under their own filer ID (filerTypeCd COH).
+- **Rule:** Candidates file under their own filer ID (filerTypeCd COH), and often also raise through a specific-purpose committee linked in the TEC SPAC index (rule linked-committees).
+- **Rule:** Offices come from filers.csv (office sought, else held) and spacs.csv links.
 - **Known gap:** Paper-era filings before July 2000 are not in the database.
 
 #### MI: [Michigan Bureau of Elections (MiTN)](https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?page=gov.mi.boe.component.cfrexport.page.cfrexportdownload)
@@ -188,8 +235,10 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - **Rule:** Returned contributions are negative amounts.
 - **Rule:** Amended reports repeat transactions; the most recently filed copy wins.
 - **Rule:** Unitemized contributions are lump sums typed 'unitemized' (no donor, excluded from geography shares).
+- **Rule:** Offices come from the PeachFile candidate registry (GetCandidateDetails), joined on filing entity ID.
 - **Known gap:** Nothing before 2025: the 2025 election window (from Nov 2024) is only partly covered.
 - **Known gap:** Some prominent filers (e.g. Raffensperger, Bottoms) are absent from the bulk export; cause unknown.
+- **Known gap:** Leadership committees (e.g. WBJ Leadership Committee, Georgians First) register as non-candidate committees and are classified 'pac', not under the office of the official they are tied to.
 <!-- END GENERATED: data-scope -->
 
 ## Adding a state

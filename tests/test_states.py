@@ -188,8 +188,17 @@ GA_LIST = {"data": {"items": [{"transactionTypeCode": "TCON", "dataExtractedDate
            "succeeded": True}
 
 
+GA_CANDIDATES = {"data": {"items": [
+    {"filerEntityId": 101091, "filerName": "Jones, William B.", "office": "Governor", "districtType": "Statewide",
+     "districtName": None, "electionCycleId": 30, "electionCycleName": "2026 Georgia State Election"},
+    {"filerEntityId": 100599, "filerName": "Barton, Madison", "office": "State Representative", "districtType": "State",
+     "districtName": "5", "electionCycleId": 30, "electionCycleName": "2026 Georgia State Election"}],
+    "totalItems": 2}, "succeeded": True}
+
+
 def _mock_ga(body):
     responses.post(f"{georgia.API}/PublicFiledReportAndDownload/GetDataDownloadDetails", json=GA_LIST)
+    responses.post(f"{georgia.API}/PublicFilerDetails/GetCandidateDetails", json=GA_CANDIDATES)
     responses.post(f"{georgia.API}/ExportPublicData/GetExportPublicDownloadData", body=body,
                    match=[matchers.json_params_matcher({"FilingYear": 2026, "TransactionTypeCode": "TCON", "Type": "CSV"})])
     responses.post(f"{georgia.API}/ExportPublicData/GetExportPublicDownloadData", body=body.split(b"\r\n")[0] + b"\r\n",

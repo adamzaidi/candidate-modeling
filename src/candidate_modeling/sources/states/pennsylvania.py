@@ -31,7 +31,7 @@ import duckdb
 
 from ...config import state_dir
 from ... import store
-from ._common import (download, parse_line, read_manifest, remote_last_modified, sql_str, tempdir,  # noqa: F401
+from ._common import (case_map, download, parse_line, read_manifest, remote_last_modified, sql_str, tempdir,  # noqa: F401
                       to_clean_csv, write_manifest)
 
 STATE = "PA"
@@ -218,3 +218,37 @@ def load(con, profile: dict) -> dict:
     sql, params = normalized_sql(ids, profile["slug"])
     m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
     return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}
+
+
+# ---------- committees / offices (rule office-taxonomy) ----------
+
+# Only codes whose meaning is confirmed by filer names in the data; others stay 'unknown' with office_raw kept.
+OFFICE_MAP = {
+    "GOV": "governor", "LTG": "lieutenant_governor", "ATT": "attorney_general",
+    "TRE": "statewide_other", "AUD": "statewide_other",
+    "STS": "state_senate", "STH": "state_house",
+    "SPM": "supreme_court",                       # e.g. "Committee to Retain Justice Christine Donohue"
+    "SPR": "appellate_court", "CCJ": "appellate_court",   # Superior Court, Commonwealth Court
+    "CPJ": "trial_court", "CPJA": "trial_court", "CPJP": "trial_court", "MCJ": "trial_court",
+    "USC": "federal",
+}
+PARTY_NAME = r"\b(DEMOCRATIC|REPUBLICAN|LIBERTARIAN|GREEN)\b.*\b(COMMITTEE|PARTY|CLUB)\b"
+
+
+def committees_sql() -> str:
+    return f"""
+        WITH f AS (
+            SELECT FILERID AS committee_id,
+                   arg_max(trim(FILERNAME), SubmittedDate) AS committee_name,
+                   arg_max(FILERTYPE, SubmittedDate) AS ftype,
+                   arg_max(nullif(trim(OFFICE), ''), SubmittedDate) AS office_raw,
+                   arg_max(nullif(nullif(trim(DISTRICT), ''), '-1'), SubmittedDate) AS district
+            FROM read_parquet({_glob('filer')}) GROUP BY FILERID),
+        k AS (
+            SELECT *, CASE WHEN ftype = '1' OR office_raw IS NOT NULL THEN 'candidate'
+                           WHEN ftype = '2' AND regexp_matches(upper(committee_name), {sql_str(PARTY_NAME)}) THEN 'party_committee'
+                           WHEN ftype = '2' THEN 'pac' ELSE 'other_committee' END AS kind FROM f)
+        SELECT committee_id, committee_name, kind, office_raw,
+               CASE WHEN kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE kind END AS office_category,
+               district
+        FROM k"""

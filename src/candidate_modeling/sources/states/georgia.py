@@ -25,7 +25,7 @@ import requests
 
 from ...config import USER_AGENT, state_dir
 from ... import store
-from ._common import read_manifest, sql_str, tempdir, to_clean_csv, write_manifest
+from ._common import case_map, read_manifest, sql_str, tempdir, to_clean_csv, write_manifest
 
 STATE = "GA"
 SOURCE = "ga_gtcfc"
@@ -117,8 +117,12 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
         raw.unlink()
         m[str(y)] = {"extracted": stamp, **stats}
         out.append({"year": y, "status": "updated", **stats})
+    try:
+        m["candidates"] = fetch_candidates()
+    except Exception as e:  # office lookup is an enrichment; don't fail the money sync over it
+        m["candidates_error"] = str(e)
     write_manifest(d, m)
-    return {"state": STATE, "data_extracted": stamp, "years": out}
+    return {"state": STATE, "data_extracted": stamp, "years": out, "candidates": m.get("candidates")}
 
 
 def synced_years() -> list[int]:
@@ -164,10 +168,13 @@ SCOPE = {
         "Returned contributions are negative amounts.",
         "Amended reports repeat transactions; the most recently filed copy wins.",
         "Unitemized contributions are lump sums typed 'unitemized' (no donor, excluded from geography shares).",
+        "Offices come from the PeachFile candidate registry (GetCandidateDetails), joined on filing entity ID.",
     ],
     "known_gaps": [
         "Nothing before 2025: the 2025 election window (from Nov 2024) is only partly covered.",
         "Some prominent filers (e.g. Raffensperger, Bottoms) are absent from the bulk export; cause unknown.",
+        "Leadership committees (e.g. WBJ Leadership Committee, Georgians First) register as non-candidate committees "
+        "and are classified 'pac', not under the office of the official they are tied to.",
     ],
 }
 
@@ -214,3 +221,81 @@ def load(con, profile: dict) -> dict:
     sql, params = normalized_sql(ids, profile["slug"])
     m = store.merge_query(con, profile["slug"], SOURCE, sql, params)  # full snapshot: absent rows -> removed
     return {"source": SOURCE, "rows": m["staged"], "changes": m, ID_KEY: ids, "covered_years": covered_years()}
+
+
+# ---------- committees / offices (rule office-taxonomy) ----------
+
+OFFICE_MAP = {
+    "Governor": "governor", "Lieutenant Governor": "lieutenant_governor", "Attorney General": "attorney_general",
+    "Secretary of State": "secretary_of_state",
+    "State School Superintendent": "statewide_other", "Commissioner of Insurance": "statewide_other",
+    "Commissioner of Labor": "statewide_other", "Commissioner of Agriculture": "statewide_other",
+    "Public Service Commissioner": "statewide_other",
+    "State Senator": "state_senate", "State Representative": "state_house",
+    "Justice of the Supreme Court": "supreme_court", "Court of Appeals Judge": "appellate_court",
+    "Superior Court Judge": "trial_court", "State Court Judge": "trial_court", "Probate Court Judge": "trial_court",
+    "Chief Magistrate Judge": "trial_court",
+    "District Attorney": "prosecutor", "Solicitor General": "prosecutor",
+    "County Commissioner": "county_office", "County Commission - Chair": "county_office", "Sheriff": "county_office",
+    "Clerk of Superior Court": "county_office", "Tax Commissioner": "county_office", "Coroner": "county_office",
+    "City Councilperson": "municipal_office", "Mayor": "municipal_office", "Mayor Pro Tempore": "municipal_office",
+    "Alderman": "municipal_office", "Water Board": "municipal_office",
+    "School Board Member": "school_board",
+}
+CANDIDATES_FILE = "candidates.parquet"
+
+
+def fetch_candidates(page_size: int = 100) -> int:
+    """PeachFile candidate registry (office, district) -> parquet. Page size >100 trips the site's WAF."""
+    import json
+    import time
+
+    _, p = _dirs()
+    items, page = [], 1
+    while True:
+        r = requests.post(f"{API}/PublicFilerDetails/GetCandidateDetails",
+                          json={"PageSize": page_size, "PageNumber": page}, headers=_HEADERS, timeout=60)
+        r.raise_for_status()
+        d = r.json()["data"]
+        items += d["items"]
+        if not d["items"] or len(items) >= d["totalItems"]:
+            break
+        page += 1
+        time.sleep(0.3)
+    keep = ["filerEntityId", "filerName", "office", "districtType", "districtName", "electionCycleId",
+            "electionCycleName", "partyAffiliation"]
+    rows = [{k: i.get(k) for k in keep} for i in items]
+    d, _ = _dirs()
+    tmp = d / "candidates.json"
+    tmp.write_text(json.dumps(rows))
+    con = duckdb.connect()
+    con.execute(f"COPY (SELECT * FROM read_json({sql_str(tmp)}, columns={{'filerEntityId': 'VARCHAR', "
+                "'filerName': 'VARCHAR', 'office': 'VARCHAR', 'districtType': 'VARCHAR', 'districtName': 'VARCHAR', "
+                "'electionCycleId': 'BIGINT', 'electionCycleName': 'VARCHAR', 'partyAffiliation': 'VARCHAR'})) "
+                f"TO {sql_str(p / CANDIDATES_FILE)} (FORMAT parquet)")
+    con.close()
+    tmp.unlink()
+    return len(rows)
+
+
+def committees_sql() -> str:
+    _, p = _dirs()
+    cand = p / CANDIDATES_FILE
+    office_join = (f"""LEFT JOIN (SELECT filerEntityId, arg_max(office, electionCycleId) AS office,
+                          arg_max(districtName, electionCycleId) AS district
+                   FROM read_parquet({sql_str(cand)}) GROUP BY filerEntityId) o ON o.filerEntityId = f.committee_id"""
+                   if cand.exists() else "LEFT JOIN (SELECT NULL AS filerEntityId, NULL AS office, NULL AS district) o ON false")
+    return f"""
+        WITH f AS (
+            SELECT filing_entity_id AS committee_id,
+                   any_value(coalesce(nullif(committee_name, ''), filing_entity_name)) AS committee_name,
+                   any_value(registration_type) AS rtype
+            FROM read_parquet({_glob()}) GROUP BY filing_entity_id)
+        SELECT f.committee_id, f.committee_name,
+               CASE WHEN rtype LIKE 'Candidate%' THEN 'candidate' WHEN rtype = 'Non-Candidate Committee' THEN 'pac'
+                    ELSE 'other_committee' END AS kind,
+               o.office AS office_raw,
+               CASE WHEN rtype LIKE 'Candidate%' THEN {case_map("o.office", OFFICE_MAP)}
+                    WHEN rtype = 'Non-Candidate Committee' THEN 'pac' ELSE 'other_committee' END AS office_category,
+               o.district
+        FROM f {office_join}"""

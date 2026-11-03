@@ -8,6 +8,8 @@
   cm changes talarico [--since 2026-11-01]   # amendments / removals / new filings between loads
   cm history talarico                        # FEC totals snapshots over time
   cm compare-elections 2025 2026 --state PA  # election windows side by side (or --slugs a b)
+  cm compare-elections 2022 2026 --state TX --stage primary --group-by office
+  cm compare-elections 2022 2026 --state TX --office governor
   cm scope                                   # rules + what is covered on this machine
   cm docs                                    # regenerate README data-scope section
   cm compare talarico someone-else
@@ -46,6 +48,10 @@ def main(argv=None):
     s = sub.add_parser("history"); s.add_argument("slug")
     s = sub.add_parser("compare-elections"); s.add_argument("years", nargs="+", type=int)
     g = s.add_mutually_exclusive_group(required=True); g.add_argument("--state"); g.add_argument("--slugs", nargs="+")
+    s.add_argument("--stage", default="general",
+                   choices=["general", "primary", "primary_runoff", "general_campaign", "general_runoff"])
+    s.add_argument("--group-by", choices=["office", "kind"]); s.add_argument("--office", nargs="+")
+    s.add_argument("--kind", nargs="+")
     sub.add_parser("scope")
     sub.add_parser("docs", help="regenerate the README data-scope section from scope.py")
     s = sub.add_parser("compare"); s.add_argument("slugs", nargs="+"); s.add_argument("--jurisdiction")
@@ -79,7 +85,8 @@ def main(argv=None):
         _print(pipeline.fundraising_history(a.slug))
     elif a.cmd == "compare-elections":
         from .elections import compare_elections
-        _print(compare_elections(a.years, state=a.state, slugs=a.slugs))
+        _print(compare_elections(a.years, state=a.state, slugs=a.slugs, stage=a.stage, group_by=a.group_by,
+                                 office=a.office, kind=a.kind))
     elif a.cmd == "scope":
         from .scope import data_scope
         _print(data_scope())

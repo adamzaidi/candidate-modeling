@@ -115,3 +115,11 @@ def to_clean_csv(src, dest: Path, ncols: int) -> dict:
     return {"rows": good, "unparseable": bad}
 
 
+
+
+# ---------- office mapping ----------
+
+def case_map(expr: str, mapping: dict[str, str], default: str = "'unknown'") -> str:
+    """SQL CASE mapping raw values (compared trimmed and case-insensitively) to normalized categories."""
+    whens = " ".join(f"WHEN {sql_str(k.strip().upper())} THEN {sql_str(v)}" for k, v in mapping.items())
+    return f"CASE upper(trim({expr})) {whens} ELSE {default} END"

@@ -117,14 +117,18 @@ def data_scope() -> dict:
 
 @server.tool()
 def compare_elections(years: list[int], state: str | None = None, slugs: list[str] | None = None,
-                      checkpoints: list[int] | None = None) -> dict:
-    """Compare money across election windows (contributions after the prior November election day through
-    this one). Pass state= for every committee in a synced state, or slugs= for profiled candidates.
-    Returns per-year totals, individuals-only totals, small-dollar, donors, in-state share, cumulative money at
-    days-before-election checkpoints, top recipients, top donors and concentration, coverage status, and
-    year-over-year changes (skipped when a window is not fully covered)."""
+                      stage: str = "general", group_by: str | None = None, office: list[str] | None = None,
+                      kind: list[str] | None = None, checkpoints: list[int] | None = None) -> dict:
+    """Compare money across election windows. state= for every committee in a synced state, or slugs= for profiled
+    candidates. stage: general (default) | primary | primary_runoff | general_campaign | general_runoff (dates from
+    the sourced calendar; data_scope lists it). group_by: 'office' or 'kind' (statewide only). office/kind: filter
+    to categories, e.g. office=["governor"] (see data_scope office_categories).
+    Returns per-year totals, individuals-only, small-dollar, donors, in-state share, cumulative money at
+    days-before checkpoints, top recipients/donors and concentration, coverage, and year-over-year changes
+    (skipped when a window is not fully covered)."""
     kw = {"checkpoints": tuple(checkpoints)} if checkpoints else {}
-    return elections.compare_elections(years, state=state, slugs=slugs, **kw)
+    return elections.compare_elections(years, state=state, slugs=slugs, stage=stage, group_by=group_by,
+                                       office=office, kind=kind, **kw)
 
 
 @server.tool()

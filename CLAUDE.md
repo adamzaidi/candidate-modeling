@@ -25,6 +25,13 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Election comparisons (`elections.py`) use transaction time: window(Y) = (election_day(Y-1), election_day(Y)].
   Statewide comparisons run connectors' `normalized_sql(None)` over the bulk parquet (no profile needed).
   `covered_years()` per connector drives coverage-first; deltas are skipped for partial windows.
+- Calendar: `reference/elections.yaml` (sourced dates only; tests enforce fields, https sources, November
+  rule for generals). `elections.stage_window(year, stage, state)`. Stages other than general need a state.
+- Offices: each connector has `committees_sql()` (committee_id, committee_name, kind, office_raw,
+  office_category, district) mapping raw labels with `_common.case_map` onto `scope.OFFICE_CATEGORIES`.
+  TX links SPACs to candidates through spacs.csv (that's how "Texans for Greg Abbott" becomes governor money;
+  without it governor 2022 showed $0.6M instead of $158.5M). GA offices come from PeachFile GetCandidateDetails
+  (PageSize above 100 trips their WAF). Only map PA codes confirmed by filer names; leave the rest unknown.
 - Profiles (`candidates/*.yaml`) are the source of truth for which IDs belong to a person. Never
   guess IDs. When find_candidate returns several plausible matches, confirm with Adam.
 
@@ -62,7 +69,7 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Secrets: `.env` locally; GitHub secrets `FEC_API_KEY` and `OPENSTATES_API_KEY` for Actions.
 
 ## Status (2026-11-03)
-- Done: FEC, TX, MI, PA, GA, history tracking, election comparisons, scope registry, MCP server, CLI, 84 offline tests + 2 live, CI + weekly refresh.
+- Done: FEC, TX, MI, PA, GA, history tracking, election comparisons (stages + offices), sourced calendar, scope registry, MCP server, CLI, 102 offline tests + 2 live, CI + weekly refresh.
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).
