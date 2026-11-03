@@ -11,7 +11,9 @@ as a CLI. First subject: **James Talarico** (Texas).
 | Federal | [FEC API](https://api.open.fec.gov/developers/) | Every federal candidate: totals + itemized receipts | done (resumable pulls) |
 | Texas | [Texas Ethics Commission](https://www.ethics.state.tx.us/search/cf/) bulk CSV | All state/local filers since 2000 (~37M contributions) | done |
 | Michigan | [MiTN all-transactions export](https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?page=gov.mi.boe.component.cfrexport.page.cfrexportdownload) | All committees, by year since 1998 | done |
-| Next | GA, PA, AZ, WI, NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
+| Pennsylvania | [DOS full export](https://www.pa.gov/agencies/dos/resources/voting-and-elections-resources/campaign-finance-data) | State/local filers, by year since 2000 | done |
+| Georgia | [PeachFile](https://efile.ethics.ga.gov/) bulk API | Filings from 2025 on (legacy 2017-2024 not covered) | done |
+| Next | AZ, WI, NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
 | Legislative | [Open States](https://docs.openstates.org/api-v3/) | Bills, votes | first-pass fetcher |
 
 ## Quick start
@@ -69,11 +71,17 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
   are skipped because their contributions are re-reported on the next regular report.
 - **Michigan:** amendments may not be reflected in the export. Committees under $5k/yr aren't
   required to e-file.
+- **Pennsylvania:** amended reports replace originals (latest submission per filer/year/period wins).
+  Donor type comes from the report section; for non-committee rows it's a name-pattern guess.
+- **Georgia:** only the 2025+ PeachFile system is covered. Some prominent filers are missing from the
+  bulk export, so check the efile site before concluding someone raised nothing. Unitemized lump sums
+  are typed `unitemized` and left out of geography shares.
 - Employer and occupation are self-reported free text and not yet mapped to industries.
 
 ## Adding a state
 
-1. Write `sources/states/<xx>.py` exposing `STATE`, `SOURCE`, `sync()`, `is_synced()`, `search(name)`, and `load(con, profile)`.
+1. Write `sources/states/<xx>.py` exposing `STATE`, `SOURCE`, `ID_KEY`, `RESULT_ID`, `sync()`, `is_synced()`,
+   `search(name)`, and `load(con, profile)`. If the CSV is broken, use the tolerant parser in `_common.py`.
 2. Register it in `sources/states/__init__.py`.
 3. Add a fixture-based test in `tests/test_states.py` that covers that state's format quirks.
 

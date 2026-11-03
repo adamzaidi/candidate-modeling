@@ -122,12 +122,12 @@ def test_michigan_sync_skips_unchanged(mi_zip):
 # ---------- registry ----------
 
 def test_registry_and_unknown_state():
-    assert set(states.REGISTRY) == {"TX", "MI", "PA"}
+    assert set(states.REGISTRY) == {"TX", "MI", "PA", "GA"}
     for m in states.REGISTRY.values():
         for attr in ("STATE", "SOURCE", "sync", "search", "load", "is_synced"):
             assert hasattr(m, attr), f"{m.__name__} missing {attr}"
     try:
-        states.get("GA")
+        states.get("WY")
     except KeyError as e:
         assert "Planned next" in str(e)
 
@@ -178,3 +178,64 @@ def test_pa_sync_skips_unchanged(pa_zip):
     responses.get(url, body=pa_zip)
     pennsylvania.sync(years=[2026])
     assert pennsylvania.sync(years=[2026])["years"][0]["status"] == "current"
+
+
+# ---------- Georgia ----------
+
+from candidate_modeling.sources.states import georgia  # noqa: E402
+
+GA_LIST = {"data": {"items": [{"transactionTypeCode": "TCON", "dataExtractedDate": "2026-11-03T15:59:52.94"}]},
+           "succeeded": True}
+
+
+def _mock_ga(body):
+    responses.post(f"{georgia.API}/PublicFiledReportAndDownload/GetDataDownloadDetails", json=GA_LIST)
+    responses.post(f"{georgia.API}/ExportPublicData/GetExportPublicDownloadData", body=body,
+                   match=[matchers.json_params_matcher({"FilingYear": 2026, "TransactionTypeCode": "TCON", "Type": "CSV"})])
+    responses.post(f"{georgia.API}/ExportPublicData/GetExportPublicDownloadData", body=body.split(b"\r\n")[0] + b"\r\n",
+                   match=[matchers.json_params_matcher({"FilingYear": 2025, "TransactionTypeCode": "TCON", "Type": "CSV"})])
+
+
+@responses.activate
+def test_ga_sync_search_load(ga_csv):
+    _mock_ga(ga_csv)
+    out = georgia.sync(years=[2024, 2025, 2026])
+    st = {y["year"]: y for y in out["years"]}
+    assert st[2024]["status"].startswith("not covered") and st[2025]["status"] == "not published"
+    assert st[2026] == {"year": 2026, "status": "updated", "rows": 9, "unparseable": 0}
+
+    hits = georgia.search("Burt Jones")
+    assert [h["filer_id"] for h in hits] == ["101091"]
+    assert georgia.search("Barton")[0]["name"] == 'Barton, Madison "Matt" F.'
+
+    with store.connect() as con:
+        r = georgia.load(con, _profile("GA", "filer_ids", ["101091"]))
+        rows = {x[0]: x[1:] for x in con.execute(
+            "SELECT transaction_id, amount, contributor_type, contributor_name, state, zip FROM contributions").fetchall()}
+    assert r["rows"] == 6                                    # 1,2,4,5,7,8 — loan (6) and other filer (3) excluded
+    assert rows["101091-1"] == (1000.0, "individual", "Doe, Jane", "GA", "30342")
+    assert rows["101091-2"][1:3] == ("organization", "GTBA - Georgia's Rural PAC")
+    assert rows["101091-4"][:2] == (250.0, "unitemized") and rows["101091-4"][3] is None
+    assert rows["101091-5"][0] == -500.0                     # ($500.00) -> negative
+    assert rows["101091-7"][0] == 150.0                      # amended copy wins
+
+
+@responses.activate
+def test_ga_sync_skips_when_extract_unchanged(ga_csv):
+    _mock_ga(ga_csv)
+    georgia.sync(years=[2026])
+    assert georgia.sync(years=[2026])["years"][0]["status"] == "current"
+
+
+def test_geography_ignores_rows_without_state():
+    from candidate_modeling import pipeline
+    pipeline.add_candidate("G", slug="g", state="GA")
+    base = {"candidate_slug": "g", "source": "ga_gtcfc", "jurisdiction": "GA", "committee_id": "1", "committee_name": "x",
+            "date": "2026-01-01", "contributor_name": None, "city": None, "zip": None, "employer": None,
+            "occupation": None, "is_memo": False, "cycle": 2026}
+    with store.connect() as con:
+        store.upsert_contributions(con, [
+            {**base, "transaction_id": "a", "amount": 100.0, "contributor_type": "individual", "state": "GA"},
+            {**base, "transaction_id": "b", "amount": 100.0, "contributor_type": "individual", "state": "FL"},
+            {**base, "transaction_id": "c", "amount": 800.0, "contributor_type": "unitemized", "state": None}])
+    assert pipeline.finance_summary("g")["geography"]["pct_in_state_dollars"] == 50.0

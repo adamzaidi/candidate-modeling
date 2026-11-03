@@ -149,3 +149,38 @@ def pa_zip() -> bytes:
         zf.writestr("contrib_2026.txt", body)
         zf.writestr("expense_2026.txt", "x\r\n")
     return buf.getvalue()
+
+
+# ---------- Georgia fixture CSV ----------
+
+def ga_row(txn, entity="101091", name="Burt Jones for Georgia", ttype="Contribution", sub="Itemized Contribution",
+           ctype="Individual", last="Doe", first="Jane", state="GA", zip_='="30342-3429"', amount='"$1,000.00"',
+           tdate="01/11/2026", amended="N", filed="02/05/2026", employer="Acme"):
+    from candidate_modeling.sources.states import georgia
+    vals = {c: "" for c in georgia.COLUMNS}
+    vals.update({"filing_entity_id": entity, "filing_entity_name": name, "committee_name": name,
+                 "registration_type": "Candidate/Candidate Campaign Committee", "transaction_id": txn,
+                 "transaction_type": ttype, "transaction_subtype": sub, "contributor_type": ctype,
+                 "contributor_last": last, "contributor_first": first, "contributor_city": "Atlanta",
+                 "contributor_state": state, "contributor_zip": zip_, "employer": employer, "occupation": "Owner",
+                 "transaction_date": tdate, "transaction_amount": amount, "amended": amended,
+                 "report_name": "2026 Jan 31 CCDR", "report_filed_date": filed})
+    return ",".join(vals[c] for c in georgia.COLUMNS)
+
+
+@pytest.fixture
+def ga_csv() -> bytes:
+    from candidate_modeling.sources.states import georgia
+    header = ",".join(c.replace("_", " ").title() for c in georgia.COLUMNS)
+    rows = [
+        ga_row("1"),
+        ga_row("2", ctype="Corporation / Business / Unregistered Committee", last="GTBA - Georgia's Rural PAC", first=""),
+        ga_row("3", name='"Barton, Madison "Matt" F."', entity="100599"),            # unescaped quotes, other filer
+        ga_row("4", sub="Unitemized Contribution", ctype="", last="", first="", state="", zip_="", amount='"$250.00"'),
+        ga_row("5", ttype="Return Contribution", amount='"($500.00)"'),
+        ga_row("6", ttype="Loan Received", sub="", amount='"$100,000.00"'),           # loans excluded
+        ga_row("7", amount='"$100.00"', filed="02/05/2026"),                          # original...
+        ga_row("7", amount='"$150.00"', filed="05/04/2026", amended="Y"),             # ...amended wins
+        ga_row("8", state="FL", amount='"$2,000.00"'),
+    ]
+    return ("\r\n".join([header, *rows]) + "\r\n").encode()

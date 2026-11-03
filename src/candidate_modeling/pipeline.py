@@ -124,8 +124,11 @@ def finance_summary(slug: str, jurisdiction: str | None = None, cycle: int | Non
                              FROM contributions_clean WHERE {w} GROUP BY ALL ORDER BY total DESC"""),
         }
         # home-state params come before the WHERE params
-        geo = con.execute(f"""SELECT round(100.0 * sum(amount) FILTER (WHERE state = ?) / nullif(sum(amount), 0), 1),
-                                     round(100.0 * count(*) FILTER (WHERE state = ?) / nullif(count(*), 0), 1)
+        # only rows with a known donor state count (unitemized lump sums have none)
+        geo = con.execute(f"""SELECT round(100.0 * sum(amount) FILTER (WHERE state = ?)
+                                           / nullif(sum(amount) FILTER (WHERE state IS NOT NULL), 0), 1),
+                                     round(100.0 * count(*) FILTER (WHERE state = ?)
+                                           / nullif(count(*) FILTER (WHERE state IS NOT NULL), 0), 1)
                               FROM contributions_clean WHERE {w}""", [home, home, *params]).fetchone()
         out["geography"] = {"pct_in_state_dollars": geo[0], "pct_in_state_count": geo[1],
                             "top_states": q(f"""SELECT state, count(*) AS n, round(sum(amount), 2) AS total
@@ -165,6 +168,9 @@ CAVEATS = [
     "State totals are itemized contributions only; loans and in-kind may be categorized differently per state.",
     "Michigan amendments may not be reflected; verify important figures against the filed statement.",
     "Employer/occupation are self-reported free text; not yet normalized to industries.",
+    "In-state share counts only contributions with a known donor state (unitemized lump sums excluded).",
+    "Georgia coverage starts in 2025 (PeachFile system); Pennsylvania donor types use a name heuristic "
+    "outside committee sections.",
 ]
 
 

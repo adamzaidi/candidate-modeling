@@ -1,0 +1,189 @@
+"""Georgia Government Transparency & Campaign Finance Commission, via PeachFile (the 2025+ e-filing system).
+
+Public site: https://efile.ethics.ga.gov/  (Angular app; data comes from the JSON API below)
+API:  POST https://api-peachfile.ethics.ga.gov/api/PublicFiledReportAndDownload/GetDataDownloadDetails
+           {"PageSize": 50, "PageNumber": 1}  -> list of bulk files + dataExtractedDate (refreshed daily)
+      POST https://api-peachfile.ethics.ga.gov/api/ExportPublicData/GetExportPublicDownloadData
+           {"FilingYear": 2026, "TransactionTypeCode": "TCON", "Type": "CSV"} -> contributions CSV
+
+Coverage: PeachFile holds filings from 2025 on. Earlier Georgia data (2017-2024) lives in the legacy
+system and is NOT covered here.
+
+Format quirks handled (verified on 2026: 593,951 rows, 0 unparseable):
+- Unescaped quotes inside quoted fields ("Barton, Madison "Matt" F.") -> shared tolerant parser.
+- Amounts are "$1,000.00", returns are "($2,000.00)"; ZIPs are Excel-guarded ="30342-3429".
+- Loans, loan payments, and interest share the file; only Contribution / Return Contribution rows load.
+- Amended reports repeat transactions; the most recently filed copy of each transaction wins.
+- Unitemized contributions are lump-sum rows with no donor -> contributor_type 'unitemized'.
+"""
+import re
+from datetime import date
+from pathlib import Path
+
+import duckdb
+import requests
+
+from ...config import USER_AGENT, state_dir
+from ... import store
+from ._common import read_manifest, sql_str, tempdir, to_clean_csv, write_manifest
+
+STATE = "GA"
+SOURCE = "ga_gtcfc"
+ID_KEY = "filer_ids"        # profile ids.state.<STATE>.<ID_KEY>
+RESULT_ID = "filer_id"     # field in search() results holding that ID
+API = "https://api-peachfile.ethics.ga.gov/api"
+FIRST_YEAR = 2025
+
+COLUMNS = ["filing_entity_id", "filing_entity_name", "committee_name", "registration_type", "registration_subtype",
+           "transaction_id", "transaction_type", "transaction_subtype", "financial_institution", "contributor_type",
+           "contributor_last", "contributor_first", "contributor_middle", "contributor_country", "contributor_addr1",
+           "contributor_addr2", "contributor_city", "contributor_state", "contributor_zip", "fiduciary_relationship",
+           "fiduciary_details", "loan_resp_last", "loan_resp_first", "loan_resp_middle", "loan_resp_addr1",
+           "loan_resp_addr2", "loan_resp_city", "loan_resp_state", "loan_resp_zip", "occupation", "employer",
+           "regulated_entity", "regulated_entity_name", "transaction_date", "transaction_amount", "election_type",
+           "election_year", "transaction_description", "amended", "timed_report_name", "timed_report_filed_date",
+           "report_name", "report_filed_date"]
+INDIVIDUAL_TYPES = ("Individual", "Self", "Spouse / Dependent Child", "Lobbyist")
+_HEADERS = {"User-Agent": USER_AGENT, "Content-Type": "application/json", "Origin": "https://efile.ethics.ga.gov"}
+
+
+def _dirs() -> tuple[Path, Path]:
+    d = state_dir(STATE)
+    p = d / "parquet"
+    p.mkdir(parents=True, exist_ok=True)
+    return d, p
+
+
+def extracted_date() -> str | None:
+    r = requests.post(f"{API}/PublicFiledReportAndDownload/GetDataDownloadDetails",
+                      json={"PageSize": 50, "PageNumber": 1}, headers=_HEADERS, timeout=60)
+    r.raise_for_status()
+    for item in r.json()["data"]["items"]:
+        if item.get("transactionTypeCode") == "TCON":
+            return item.get("dataExtractedDate")
+    return None
+
+
+def _download_year(year: int, dest: Path) -> bool:
+    """Returns False if the year has no data (the API returns a header-only file)."""
+    with requests.post(f"{API}/ExportPublicData/GetExportPublicDownloadData",
+                       json={"FilingYear": year, "TransactionTypeCode": "TCON", "Type": "CSV"},
+                       headers=_HEADERS, stream=True, timeout=600) as r:
+        if r.status_code == 404:
+            return False
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for block in r.iter_content(1 << 20):
+                f.write(block)
+    with open(dest, "rb") as f:
+        f.readline()
+        return bool(f.readline().strip())
+
+
+def build_year(csv_path: Path, year: int) -> dict:
+    _, p = _dirs()
+    d, _ = _dirs()
+    with tempdir(d) as tmp, open(csv_path, "rb") as src:
+        clean = Path(tmp) / "clean.csv"
+        stats = to_clean_csv(src, clean, len(COLUMNS))
+        spec = "{" + ", ".join(f"'{c}': 'VARCHAR'" for c in COLUMNS) + "}"
+        con = duckdb.connect()
+        con.execute(f"COPY (SELECT * FROM read_csv({sql_str(clean)}, header=false, quote='\"', escape='\"', "
+                    f"columns={spec})) TO {sql_str(p / f'contributions_{year}.parquet')} (FORMAT parquet, COMPRESSION zstd)")
+        con.close()
+    return stats
+
+
+def sync(years: list[int] | None = None, force: bool = False) -> dict:
+    """Download contribution files for `years` (default: every PeachFile year through this one)."""
+    d, p = _dirs()
+    years = years or list(range(FIRST_YEAR, date.today().year + 1))
+    m = read_manifest(d)
+    stamp = extracted_date()
+    out = []
+    for y in years:
+        if y < FIRST_YEAR:
+            out.append({"year": y, "status": "not covered (pre-2025 legacy system)"})
+            continue
+        if not force and m.get(str(y), {}).get("extracted") == stamp and (p / f"contributions_{y}.parquet").exists():
+            out.append({"year": y, "status": "current"})
+            continue
+        raw = d / f"contributions_{y}.csv"
+        if not _download_year(y, raw):
+            raw.unlink(missing_ok=True)
+            out.append({"year": y, "status": "not published"})
+            continue
+        stats = build_year(raw, y)
+        raw.unlink()
+        m[str(y)] = {"extracted": stamp, **stats}
+        out.append({"year": y, "status": "updated", **stats})
+    write_manifest(d, m)
+    return {"state": STATE, "data_extracted": stamp, "years": out}
+
+
+def synced_years() -> list[int]:
+    _, p = _dirs()
+    return sorted(int(re.search(r"(\d{4})", f.name).group(1)) for f in p.glob("contributions_*.parquet"))
+
+
+def is_synced() -> bool:
+    return bool(synced_years())
+
+
+def _glob() -> str:
+    _, p = _dirs()
+    return sql_str(p / "contributions_*.parquet")
+
+
+def search(name: str) -> list[dict]:
+    """Filing entities (candidates and committees) whose entity or committee name matches."""
+    if not is_synced():
+        return [{"source": SOURCE, "error": "Georgia data not synced. Run sync_state('GA') first."}]
+    words = [w for w in re.split(r"[\s,]+", name.strip()) if w]
+    where = " AND ".join("concat_ws(' ', filing_entity_name, committee_name) ILIKE ?" for _ in words)
+    rows = duckdb.connect().execute(f"""
+        SELECT filing_entity_id, any_value(filing_entity_name), any_value(committee_name),
+               any_value(registration_type), count(*) AS n,
+               list_sort(list_distinct(list(right(transaction_date, 4)))) AS years
+        FROM read_parquet({_glob()}) WHERE {where}
+        GROUP BY filing_entity_id ORDER BY n DESC LIMIT 25""", [f"%{w}%" for w in words]).fetchall()
+    return [{"source": SOURCE, "state": STATE, "filer_id": r[0], "name": r[1], "committee": r[2],
+             "registration_type": r[3], "rows": r[4], "years": [int(y) for y in r[5] if y and y.isdigit()]}
+            for r in rows]
+
+
+def load(con, profile: dict) -> dict:
+    ids = (profile["ids"].get("state", {}).get(STATE) or {}).get(ID_KEY) or []
+    if not ids:
+        return {"source": SOURCE, "rows": 0, "note": "no GA filer_ids in profile"}
+    if not is_synced():
+        return {"source": SOURCE, "rows": 0, "note": "Georgia data not synced; run sync_state('GA')"}
+    ph = ", ".join("?" for _ in ids)
+    ind = ", ".join(f"'{t}'" for t in INDIVIDUAL_TYPES)
+    con.execute("DELETE FROM contributions WHERE candidate_slug=? AND source=?", [profile["slug"], SOURCE])
+    sql = f"""
+        WITH t AS (
+            SELECT *,
+                   CASE WHEN transaction_amount LIKE '(%' THEN -1 ELSE 1 END
+                     * try_cast(regexp_replace(transaction_amount, '[$,()]', '', 'g') AS DOUBLE) AS amt,
+                   try_strptime(transaction_date, '%m/%d/%Y')::DATE AS d
+            FROM read_parquet({_glob()})
+            WHERE filing_entity_id IN ({ph}) AND transaction_type IN ('Contribution', 'Return Contribution')
+            QUALIFY row_number() OVER (PARTITION BY filing_entity_id, transaction_id
+                                       ORDER BY try_strptime(report_filed_date, '%m/%d/%Y') DESC NULLS LAST) = 1
+        )
+        SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', filing_entity_id,
+               coalesce(nullif(committee_name, ''), filing_entity_name),
+               concat_ws('-', filing_entity_id, transaction_id), d, amt,
+               nullif(trim(concat_ws(', ', nullif(trim(contributor_last), ''), nullif(trim(contributor_first), ''))), ''),
+               CASE WHEN transaction_subtype = 'Unitemized Contribution' OR contributor_type IS NULL THEN 'unitemized'
+                    WHEN contributor_type IN ({ind}) THEN 'individual' ELSE 'organization' END,
+               nullif(trim(contributor_city), ''), upper(nullif(trim(contributor_state), '')),
+               nullif(left(regexp_replace(contributor_zip, '[="]', '', 'g'), 5), ''),
+               nullif(trim(employer), ''), nullif(trim(occupation), ''), false,
+               (year(d) + year(d) % 2)::INTEGER
+        FROM t
+    """
+    n = store.upsert_from_query(con, sql, [*ids, profile["slug"]])
+    return {"source": SOURCE, "rows": n, "filer_ids": ids, "years_available": synced_years(),
+            "note": "Georgia coverage starts 2025 (PeachFile); 2017-2024 legacy filings not included."}

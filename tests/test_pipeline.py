@@ -96,8 +96,8 @@ def test_find_candidate_survives_fec_failure(tx_zip):
 def test_find_candidate_unsupported_state():
     with responses.RequestsMock() as rs:
         rs.get(f"{fec.BASE}/candidates/search/", json={"results": []})
-        out = pipeline.find_candidate("Someone", state="GA")
-    assert "No connector for GA" in out["states"]["GA"][0]["error"]
+        out = pipeline.find_candidate("Someone", state="WY")
+    assert "No connector for WY" in out["states"]["WY"][0]["error"]
 
 
 # ---------- query safety ----------

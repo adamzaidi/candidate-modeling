@@ -21,7 +21,6 @@ Format quirks handled (all verified on the 2026 file):
 - The filer file's MONETARY/INKIND columns do NOT equal the itemized sums; don't reconcile against them.
 - Federal and party-office candidates don't file here.
 """
-import csv
 import io
 import re
 import zipfile
@@ -32,7 +31,8 @@ import duckdb
 
 from ...config import state_dir
 from ... import store
-from ._common import download, read_manifest, remote_last_modified, sql_str, tempdir, write_manifest
+from ._common import (download, parse_line, read_manifest, remote_last_modified, sql_str, tempdir,  # noqa: F401
+                      to_clean_csv, write_manifest)
 
 STATE = "PA"
 SOURCE = "pa_dos"
@@ -51,65 +51,6 @@ ORG_PATTERN = (r"\b(PAC|P\.A\.C|COMMITTEE|CMTE|COMM|INC|LLC|LLP|LP|CORP|CORPORAT
                r"PARTY|ASSOCIATION|ASSN|ASSOC|COUNCIL|FEDERATION|FRIENDS OF|CITIZENS FOR|PEOPLE FOR|DEMOCRATIC|"
                r"REPUBLICAN|CAUCUS|TRUST|GROUP|PARTNERS|ENTERPRISES|INDUSTRIES|BANK|FOUNDATION|CLUB|SOCIETY)\b")
 FILER_TYPES = {"1": "candidate", "2": "committee", "3": "lobbyist"}
-
-_FIELD = re.compile(r'"((?:[^"]|"(?!,|\s*$))*)"(?=,|\s*$)|([^,]*)')
-
-
-# ---------- tolerant parsing ----------
-
-def parse_line(line: str) -> list[str] | None:
-    """Split one PA export line. A quote ends a field only if followed by ',' or end of line."""
-    out, i, n = [], 0, len(line)
-    while True:
-        m = _FIELD.match(line, i)
-        out.append(m.group(1) if m.group(1) is not None else m.group(2))
-        i = m.end()
-        if i >= n:
-            return out
-        if line[i] != ",":
-            return None
-        i += 1
-
-
-def _decode(raw: bytes) -> str:
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw.decode("cp1252", errors="replace")
-
-
-def clean_rows(lines, ncols: int, max_join: int = 4):
-    """Yield (row | None) for each logical record; None = unparseable after joining. Skips the header."""
-    it = iter(lines)
-    next(it, None)
-    for raw in it:
-        text = _decode(raw).rstrip("\r\n")
-        if not text.strip():
-            continue
-        row = parse_line(text)
-        joins = 0
-        while (row is None or len(row) < ncols) and joins < max_join:
-            nxt = next(it, None)
-            if nxt is None:
-                break
-            text = text + " " + _decode(nxt).rstrip("\r\n")
-            row = parse_line(text)
-            joins += 1
-        yield row if row is not None and len(row) == ncols else None
-
-
-def to_clean_csv(src, dest: Path, ncols: int) -> dict:
-    good = bad = 0
-    with open(dest, "w", newline="", encoding="utf-8") as fo:
-        w = csv.writer(fo)
-        for row in clean_rows(src, ncols):
-            if row is None:
-                bad += 1
-            else:
-                w.writerow(row)
-                good += 1
-    return {"rows": good, "unparseable": bad}
-
 
 # ---------- sync ----------
 

@@ -29,6 +29,19 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - FEC `/candidate/{id}/totals/` returns whole-election rollups with `cycle=null`. Pass
   `election_full=false` and skip null cycles.
 - The old michigan.gov/nictusa download URLs are dead (system moved to MiTN in 2025).
+- PA: `.../campaign-finance-data/{year}.zip` on pa.gov. Not valid CSV (unescaped inner quotes, raw
+  newlines, some cp1252 lines), so it goes through the `_common.to_clean_csv` tolerant parser. DuckDB's
+  `strict_mode=false` silently dropped 150 rows; never use it as the fix. Up to 3 date/amount pairs
+  per row (unpivot). The filer file has one row per report; latest SubmittedDate per (FILERID, EYEAR,
+  CYCLE) wins. MONETARY/INKIND on the filer file do not reconcile with itemized sums. Candidates
+  (FILERTYPE 1) raise through committees (type 2) with different IDs; use the committee ID.
+- GA: PeachFile JSON API (`api-peachfile.ethics.ga.gov/api`) found by reading the Angular bundle.
+  POST `ExportPublicData/GetExportPublicDownloadData` {FilingYear, TransactionTypeCode: "TCON",
+  Type: "CSV"}. Years before 2025 return a header only. Same broken-quote problem as PA. Loans share
+  the file (exclude them). Amended copies repeat transaction IDs (latest report_filed_date wins).
+  Raffensperger and Bottoms are absent from the export: a known gap, not yet explained.
+- Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
+  against an independent parse first.
 
 ## Conventions
 - Tests are offline (fixtures in `tests/conftest.py`, HTTP mocked with `responses`). `pytest -m live`
@@ -38,8 +51,8 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Secrets: `.env` locally; GitHub secrets `FEC_API_KEY` and `OPENSTATES_API_KEY` for Actions.
 
 ## Status (2026-11-03)
-- Done: FEC, TX, MI, MCP server, CLI, 33 offline tests + 2 live tests, CI + weekly refresh workflow.
+- Done: FEC, TX, MI, PA, GA, MCP server, CLI, 51 offline tests + 2 live, CI + weekly refresh.
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).
-- Next states: GA, PA, AZ, WI, NC, NV, FL, OH, CA, NY.
+- States done: TX, MI, PA, GA. Next: AZ, WI, NC, NV, FL, OH, CA, NY.
