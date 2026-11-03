@@ -25,10 +25,11 @@ import requests
 
 from ...config import USER_AGENT, state_dir
 from ... import store
-from ._common import case_map, read_manifest, sql_str, tempdir, to_clean_csv, write_manifest
+from ._common import case_map, data_files, parquet_list, read_manifest, sql_str, tempdir, to_clean_csv, write_manifest
 
 STATE = "GA"
 SOURCE = "ga_gtcfc"
+PARQUET = r"contributions_\d{4}\.parquet"  # exact names only (rule: never trust globs)
 ID_KEY = "filer_ids"        # profile ids.state.<STATE>.<ID_KEY>
 RESULT_ID = "filer_id"     # field in search() results holding that ID
 API = "https://api-peachfile.ethics.ga.gov/api"
@@ -127,7 +128,7 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
 
 def synced_years() -> list[int]:
     _, p = _dirs()
-    return sorted(int(re.search(r"(\d{4})", f.name).group(1)) for f in p.glob("contributions_*.parquet"))
+    return sorted(int(f.name[14:18]) for f in data_files(p, PARQUET))
 
 
 def is_synced() -> bool:
@@ -136,7 +137,7 @@ def is_synced() -> bool:
 
 def _glob() -> str:
     _, p = _dirs()
-    return sql_str(p / "contributions_*.parquet")
+    return parquet_list(p, PARQUET)
 
 
 def search(name: str) -> list[dict]:
@@ -193,7 +194,7 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                      * try_cast(regexp_replace(transaction_amount, '[$,()]', '', 'g') AS DOUBLE) AS amt,
                    try_strptime(transaction_date, '%m/%d/%Y')::DATE AS d
             FROM read_parquet({_glob()})
-            WHERE {flt}transaction_type IN ('Contribution', 'Return Contribution')
+            WHERE {flt}transaction_type IN ('Contribution', 'Return Contribution', 'Loan Received')
             QUALIFY row_number() OVER (PARTITION BY filing_entity_id, transaction_id
                                        ORDER BY try_strptime(report_filed_date, '%m/%d/%Y') DESC NULLS LAST) = 1
         )
@@ -206,7 +207,10 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                nullif(trim(contributor_city), ''), upper(nullif(trim(contributor_state), '')),
                nullif(left(regexp_replace(contributor_zip, '[="]', '', 'g'), 5), ''),
                nullif(trim(employer), ''), nullif(trim(occupation), ''), false,
-               (year(d) + year(d) % 2)::INTEGER
+               (year(d) + year(d) % 2)::INTEGER,
+               CASE WHEN transaction_type = 'Loan Received' THEN 'loan'
+                    WHEN transaction_type = 'Return Contribution' THEN 'return'
+                    WHEN transaction_subtype = 'In-Kind Contribution' THEN 'in_kind' ELSE 'monetary' END
         FROM t
     """
     return sql, [*(ids or []), slug]
@@ -279,12 +283,17 @@ def fetch_candidates(page_size: int = 100) -> int:
 
 
 def committees_sql() -> str:
+    from ... import labels as L
     _, p = _dirs()
     cand = p / CANDIDATES_FILE
     office_join = (f"""LEFT JOIN (SELECT filerEntityId, arg_max(office, electionCycleId) AS office,
-                          arg_max(districtName, electionCycleId) AS district
+                          arg_max(districtName, electionCycleId) AS district,
+                          arg_max(partyAffiliation, electionCycleId) AS party_raw,
+                          arg_max(filerName, electionCycleId) AS cand_name
                    FROM read_parquet({sql_str(cand)}) GROUP BY filerEntityId) o ON o.filerEntityId = f.committee_id"""
-                   if cand.exists() else "LEFT JOIN (SELECT NULL AS filerEntityId, NULL AS office, NULL AS district) o ON false")
+                   if cand.exists() else
+                   "LEFT JOIN (SELECT NULL AS filerEntityId, NULL AS office, NULL AS district, NULL AS party_raw, "
+                   "NULL AS cand_name) o ON false")
     return f"""
         WITH f AS (
             SELECT filing_entity_id AS committee_id,
@@ -297,5 +306,7 @@ def committees_sql() -> str:
                o.office AS office_raw,
                CASE WHEN rtype LIKE 'Candidate%' THEN {case_map("o.office", OFFICE_MAP)}
                     WHEN rtype = 'Non-Candidate Committee' THEN 'pac' ELSE 'other_committee' END AS office_category,
-               o.district
+               o.district, {L.committee_party_sql("o.party_raw", "CASE WHEN rtype LIKE 'Candidate%' THEN 'candidate' ELSE 'pac' END", "f.committee_name")} AS party,
+               {L.name_last_sql("o.cand_name")} AS cand_last, {L.name_first_sql("o.cand_name")} AS cand_first,
+               {L.conduit_sql("f.committee_name")} AS is_conduit
         FROM f {office_join}"""

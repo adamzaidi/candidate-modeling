@@ -221,12 +221,17 @@ def test_ga_sync_search_load(ga_csv):
         r = georgia.load(con, _profile("GA", "filer_ids", ["101091"]))
         rows = {x[0]: x[1:] for x in con.execute(
             "SELECT transaction_id, amount, contributor_type, contributor_name, state, zip FROM contributions").fetchall()}
-    assert r["rows"] == 6                                    # 1,2,4,5,7,8 — loan (6) and other filer (3) excluded
+    assert r["rows"] == 7                                    # 1,2,4,5,6,7,8 — other filer (3) excluded
     assert rows["101091-1"] == (1000.0, "individual", "Doe, Jane", "GA", "30342")
     assert rows["101091-2"][1:3] == ("organization", "GTBA - Georgia's Rural PAC")
     assert rows["101091-4"][:2] == (250.0, "unitemized") and rows["101091-4"][3] is None
     assert rows["101091-5"][0] == -500.0                     # ($500.00) -> negative
     assert rows["101091-7"][0] == 150.0                      # amended copy wins
+    with store.connect() as con:
+        kinds = dict(con.execute("SELECT transaction_id, contribution_kind FROM contributions").fetchall())
+        clean = con.execute("SELECT count(*) FROM contributions_clean").fetchone()[0]
+    assert kinds["101091-6"] == "loan" and kinds["101091-5"] == "return" and kinds["101091-1"] == "monetary"
+    assert clean == 6                                        # loan labeled but never counted (rule loans-excluded)
 
 
 @responses.activate
@@ -248,3 +253,27 @@ def test_geography_ignores_rows_without_state():
             {**base, "transaction_id": "b", "amount": 100.0, "contributor_type": "individual", "state": "FL"},
             {**base, "transaction_id": "c", "amount": 800.0, "contributor_type": "unitemized", "state": None}])
     assert pipeline.finance_summary("g")["geography"]["pct_in_state_dollars"] == 50.0
+
+
+# ---------- sync-conflict copies (iCloud/Dropbox "name 2.parquet") must never be read ----------
+
+@responses.activate
+def test_conflict_copies_are_ignored(tx_zip, mi_zip):
+    import shutil
+
+    from candidate_modeling import elections, query
+
+    _mock_tx(tx_zip)
+    texas.sync()
+    _mock_mi(mi_zip)
+    michigan.sync(years=[2026])
+    before_tx = query.run("SELECT count(*) FROM tx_contribs_raw")["rows"]
+    before_cmp = elections.compare_elections([2024], state="TX")["years"][0]["total"]
+    _, tx_parts = texas._dirs()
+    _, mi_p = michigan._dirs()
+    shutil.copy(tx_parts / "contribs_01.parquet", tx_parts / "contribs_01 2.parquet")
+    shutil.copy(mi_p / "contributions_2026.parquet", mi_p / "contributions_2026 2.parquet")
+    assert query.run("SELECT count(*) FROM tx_contribs_raw")["rows"] == before_tx
+    assert elections.compare_elections([2024], state="TX")["years"][0]["total"] == before_cmp
+    assert michigan.synced_years() == [2026]
+    assert len(michigan.search("Benson")) == 1 and michigan.search("Benson")[0]["rows"] == 4

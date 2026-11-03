@@ -125,15 +125,17 @@ def test_as_of_macro_available_to_agent_sql(clock):
 def test_migrates_pre_history_database(isolated):
     path = config.db_path()
     con = duckdb.connect(str(path))
-    cols = ", ".join(f"{c} {t}" for c, t in store.CONTRIBUTION_COLUMNS)
+    old = [c for c in store.CONTRIBUTION_COLUMNS if c[0] not in store.DERIVED]  # v0.2 schema: no labels
+    cols = ", ".join(f"{c} {t}" for c, t in old)
     con.execute(f"CREATE TABLE contributions ({cols}, PRIMARY KEY (source, transaction_id, candidate_slug))")
     con.execute("CREATE VIEW contributions_clean AS SELECT * FROM contributions")
     con.execute("INSERT INTO contributions VALUES ('c1','tx_tec','TX','F1','C','a','2026-01-01',5.0,'D','individual',"
                 "'Austin','TX','78701',NULL,NULL,false,2026)")
     con.close()
     with store.connect() as con:
-        row = con.execute("SELECT row_hash IS NOT NULL, first_seen IS NOT NULL, removed_at FROM contributions").fetchone()
-        assert row == (True, True, None)
+        row = con.execute("SELECT row_hash IS NOT NULL, first_seen IS NOT NULL, removed_at, contribution_kind "
+                          "FROM contributions").fetchone()
+        assert row == (True, True, None, None)  # label column added; NULL counts as monetary
         assert con.execute("SELECT count(*) FROM contributions_clean").fetchone()[0] == 1
 
 
@@ -218,3 +220,27 @@ def test_texas_resync_records_amendment_and_removal(clock, tx_zip):
     with store.connect() as con:
         ch = texas.load(con, p)["changes"]
     assert (ch["modified"], ch["removed"], ch["unchanged"], ch["new"]) == (1, 1, 2, 0)
+
+
+def test_derived_label_change_is_not_a_modification(clock):
+    with store.connect() as con:
+        a = r("a", 100)
+        store.merge_rows(con, "c1", "tx_tec", [{**a, "contribution_kind": None}], full=True)
+        clock.t = T2
+        m = store.merge_rows(con, "c1", "tx_tec", [{**a, "contribution_kind": "in_kind"}], full=True)
+        assert (m["modified"], m["unchanged"]) == (0, 1)
+        assert con.execute("SELECT contribution_kind, valid_from FROM contributions").fetchone() == ("in_kind", T1)
+        assert con.execute("SELECT count(*) FROM contribution_history").fetchone()[0] == 0
+
+
+def test_rehash_folds_back_spurious_versions(clock):
+    with store.connect() as con:
+        store.merge_rows(con, "c1", "tx_tec", [r("a", 100)], full=True)
+        # simulate the pre-fix bug: a 'modified' version whose hashed values equal the current row
+        con.execute("INSERT INTO contribution_history SELECT " + ", ".join(store.COLUMN_NAMES)
+                    + ", row_hash, valid_from, ?, 'modified' FROM contributions", [T2])
+        con.execute("UPDATE contributions SET valid_from = ?", [T2])
+        con.execute("DELETE FROM store_meta")
+    with store.connect() as con:  # reconnect runs the migration
+        assert con.execute("SELECT count(*) FROM contribution_history").fetchone()[0] == 0
+        assert con.execute("SELECT valid_from FROM contributions").fetchone()[0] == T1

@@ -50,8 +50,7 @@ def tempdir(base: Path) -> tempfile.TemporaryDirectory:
     return tempfile.TemporaryDirectory(dir=base)
 
 
-def sql_str(s: str | Path) -> str:
-    return "'" + str(s).replace("'", "''") + "'"
+from ...labels import case_map, sql_str  # noqa: E402,F401  (single definition lives in labels)
 
 
 # ---------- tolerant CSV (PA, GA: unescaped quotes inside quoted fields, stray line breaks) ----------
@@ -115,11 +114,17 @@ def to_clean_csv(src, dest: Path, ncols: int) -> dict:
     return {"rows": good, "unparseable": bad}
 
 
+# ---------- exact file sets (never trust globs: iCloud/Dropbox create "name 2.parquet" conflict copies) ----------
+
+def data_files(d: Path, pattern: str) -> list[Path]:
+    """Files in d whose names fully match `pattern` (a regex), e.g. r"contribs_\\d+\\.parquet"."""
+    rx = re.compile(pattern)
+    return sorted(f for f in d.iterdir() if rx.fullmatch(f.name)) if d.exists() else []
 
 
-# ---------- office mapping ----------
-
-def case_map(expr: str, mapping: dict[str, str], default: str = "'unknown'") -> str:
-    """SQL CASE mapping raw values (compared trimmed and case-insensitively) to normalized categories."""
-    whens = " ".join(f"WHEN {sql_str(k.strip().upper())} THEN {sql_str(v)}" for k, v in mapping.items())
-    return f"CASE upper(trim({expr})) {whens} ELSE {default} END"
+def parquet_list(d: Path, pattern: str) -> str:
+    """SQL list literal for read_parquet([...]). Raises if nothing matches, instead of silently reading nothing."""
+    files = data_files(d, pattern)
+    if not files:
+        raise FileNotFoundError(f"no files matching {pattern} in {d}; run sync first")
+    return "[" + ", ".join(sql_str(f) for f in files) + "]"

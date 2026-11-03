@@ -122,7 +122,8 @@ def normalize(r: dict, slug: str) -> dict:
         "date": (r.get("contribution_receipt_date") or "")[:10] or None,
         "amount": r.get("contribution_receipt_amount"),
         "contributor_name": r.get("contributor_name"),
-        "contributor_type": "individual" if r.get("entity_type") == "IND" else "organization",
+        # CAN = the candidate giving to their own committee: a person, flagged later by self-funding
+        "contributor_type": "individual" if r.get("entity_type") in ("IND", "CAN") else "organization",
         "city": r.get("contributor_city"),
         "state": r.get("contributor_state"),
         "zip": (r.get("contributor_zip") or "")[:5] or None,
@@ -130,7 +131,25 @@ def normalize(r: dict, slug: str) -> dict:
         "occupation": r.get("contributor_occupation"),
         "is_memo": r.get("memo_code") == "X",
         "cycle": r.get("two_year_transaction_period"),
+        "contribution_kind": receipt_kind(r),
     }
+
+
+def receipt_kind(r: dict) -> str:
+    """FEC Form 3 lines: 11 contributions, 12 transfers from authorized committees, 13 loans, 14-17 other receipts."""
+    line = str(r.get("line_number") or "").upper()
+    desc = str(r.get("receipt_type_full") or r.get("receipt_type_desc") or "").upper()
+    if line.startswith("13") or "LOAN" in desc:
+        return "loan"
+    if line.startswith(("14", "15", "16", "17")):
+        return "other_receipt"
+    if line.startswith("12"):
+        return "transfer"
+    if "IN-KIND" in desc or "IN KIND" in desc:
+        return "in_kind"
+    if (r.get("contribution_receipt_amount") or 0) < 0:
+        return "return"
+    return "monetary"
 
 
 def fetch_itemized(con, slug: str, committee_id: str, cycle: int, max_pages: int | None = None) -> dict:

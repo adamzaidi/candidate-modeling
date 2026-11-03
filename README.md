@@ -122,12 +122,15 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 
 - **itemized-only**: Totals are itemized contributions as filed. FEC small-dollar money (under $200 per donor per cycle) is not itemized and appears only in fec_totals; Georgia lump sums are typed 'unitemized'.
 - **clean-view**: Sum over contributions_clean (or contributions_as_of): they exclude memo rows (FEC sub-items) and rows that have been removed at the source.
-- **loans-excluded**: Loans, loan payments, and interest are not contributions and are excluded.
+- **loans-excluded**: Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled (contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), available for MI, GA, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt).
+- **contribution-kind**: Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, return, and transfer; in_kind_total and returns_total are reported separately.
 - **returns-negative**: Returned contributions are negative amounts where the source reports them.
 - **in-state-share**: In-state share counts only rows with a known donor state; unitemized lump sums are left out.
 - **nominal-dollars**: Amounts are nominal dollars; nothing is inflation-adjusted.
 - **statewide-double-count**: Statewide totals add up money received by every committee, so committee-to-committee transfers (PAC to candidate, party to candidate) and conduits that forward earmarked gifts (e.g. ActBlue Texas) are counted at each hop. Prefer the individuals-only total when comparing statewide money.
-- **self-funding**: A candidate's money to their own campaign is often typed 'individual' (e.g. $200M from Richard Jackson to Jackson for Governor in GA, 2026). Check top_donors and pct_from_top_donor before reading individual totals as grassroots support.
+- **self-funding**: A candidate's money to their own campaign is usually typed 'individual' (e.g. $200M from Richard Jackson to Jackson for Governor in GA, 2026). self_funding_total flags individual gifts whose donor name matches the candidate (surname as a word plus the first 4 letters of the first name). Nicknames on one side only are missed, so treat it as a floor and check top_donors and pct_from_top_donor too.
+- **conduits**: Conduits (ActBlue, WinRed, and similar) forward earmarked gifts that candidates also itemize. Committees flagged is_conduit (e.g. ActBlue Texas) are reported as conduit_recipient_total; total_excluding_conduits removes them. Gifts whose donor is a conduit are reported as from_conduit_total.
+- **party-labels**: Party is the recipient committee's party on file, normalized to democratic, republican, libertarian, green, other, cross_filed (PA judicial cross-filing), nonpartisan, unknown (a candidate with no party on file), or not_applicable (PACs and other non-party committees). Party committees take their party from their name. Texas files carry no party, so TX candidates are 'unknown' until a candidate-list source is added.
 
 ### Comparing elections
 
@@ -173,6 +176,29 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - `ballot_measure`: Ballot question committees
 - `other_committee`: Other committees (caucuses, direct-expenditure filers, unclassified committee types)
 - `unknown`: Candidate committee whose office code is missing or not yet mapped (raw code kept in office_raw)
+
+### Roadmap (not built yet)
+
+| Item | Why | Source | Effort |
+|---|---|---|---|
+| Incumbent / challenger / open-seat label | Explains much of election-over-election change (e.g. PA governor 2022 open seat vs 2026 incumbent) | FEC incumbent_challenge; TX officeholder status; seat-holder lists elsewhere | medium |
+| In-district donor share for legislative races | In-state share is too coarse for a state house seat | Census ZIP-to-district crosswalk + stored district | medium |
+| Donor industry classification | Which industries fund which offices | Rules over employer/occupation text, validated on a hand-labeled sample | medium-high |
+| Election outcomes (won / lost / runoff) | Did money predict winners | State results files | high |
+| Party for Texas candidates | TX is 'unknown' today | TX SOS candidate filings / primary ballots | medium |
+| Expenditures: where campaigns spend (vendors, consultants, media, salaries) | Half of campaign finance; every source already publishes it | TX expend_##, MI expenditure files, PA expense, GA TEXP, FEC Schedule B | medium |
+| Independent expenditures and outside groups (super PACs, IE committees) | Money spent about a candidate, often larger than what they raise | FEC Schedule E, MI IE committees, TX direct campaign expenditures, GA IE | medium-high |
+| Cash on hand, debts, and loans over time | Financial health and burn rate, not just money raised | TX cover sheets, PA filer BEGINNING, GA reports, FEC totals (already stored) | medium |
+| Donor entity resolution across sources and years | Enables donor overlap between candidates, repeat vs first-time donors, and state-to-federal donor migration (e.g. Talarico's Texas House donors vs his Senate donors) | Name + ZIP + employer matching | high |
+| Link money to votes and bills | Who funds legislators who vote a given way | Open States (key already configured) | high |
+| Lobbyist and government-contract cross-reference | Donors who lobby or hold state contracts | State lobby registrations, contract databases | high |
+| Inflation and per-capita adjustment | Fair cross-decade and cross-state comparisons | CPI-U; Census population / registered voters | low |
+| Alerts on new filings and amendments for watched candidates | History tracking already detects changes; this pushes them | load_runs + scheduled refresh | low |
+| Sync data-quality monitors | Catch upstream format changes (row-count drops, new parse failures, schema drift) | sync manifests | low |
+| Local races and ballot measures beyond state filers | Most offices are local | County/city disclosure systems | high |
+| More state connectors | Coverage | AZ, WI, NC, NV, FL, OH, CA, NY next | per state |
+
+Deliberately not planned: Guessing donor gender, race, or ethnicity from names (unreliable and easy to misuse). 'Dark money' labels without documentary evidence (needs investigation, not field mapping).
 
 ### Sources
 
@@ -247,11 +273,3 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
    `search(name)`, and `load(con, profile)`. If the CSV is broken, use the tolerant parser in `_common.py`.
 2. Register it in `sources/states/__init__.py`.
 3. Add a fixture-based test in `tests/test_states.py` that covers that state's format quirks.
-
-## Roadmap
-
-- More state connectors, in priority order
-- Industry classification from employer/occupation
-- Donor overlap between candidates; donor migration from state races to federal races
-- Expenditures (where campaigns spend)
-- Open States legislative record linked to donors

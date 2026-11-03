@@ -25,6 +25,7 @@ from contextlib import contextmanager
 import duckdb
 
 from .config import db_path
+from .labels import MACROS
 
 CONTRIBUTION_COLUMNS = [
     ("candidate_slug", "VARCHAR"),
@@ -44,10 +45,15 @@ CONTRIBUTION_COLUMNS = [
     ("occupation", "VARCHAR"),
     ("is_memo", "BOOLEAN"),
     ("cycle", "INTEGER"),
+    ("contribution_kind", "VARCHAR"),  # monetary | in_kind | return | transfer | loan | other_receipt
 ]
 COLUMN_NAMES = [c for c, _ in CONTRIBUTION_COLUMNS]
 KEY = ["source", "transaction_id", "candidate_slug"]
+# Derived labels are refreshed on every load but excluded from the change hash, so adding or improving a
+# label never makes rows look amended in the history.
+DERIVED = ["contribution_kind"]
 CONTENT = [c for c in COLUMN_NAMES if c not in KEY]
+HASHED = [c for c in CONTENT if c not in DERIVED]
 TRACKING = [("row_hash", "VARCHAR"), ("first_seen", "TIMESTAMP"), ("last_seen", "TIMESTAMP"),
             ("valid_from", "TIMESTAMP"), ("removed_at", "TIMESTAMP")]
 FEC_TOTALS_COLS = ["candidate_slug", "candidate_id", "cycle", "receipts", "disbursements", "cash_on_hand_end_period",
@@ -58,7 +64,7 @@ FEC_TOTALS_COLS = ["candidate_slug", "candidate_id", "cycle", "receipts", "disbu
 
 def _hash_expr(alias: str = "") -> str:
     p = f"{alias}." if alias else ""
-    return "md5(concat_ws('|', " + ", ".join(f"coalesce(CAST({p}{c} AS VARCHAR), '␀')" for c in CONTENT) + "))"
+    return "md5(concat_ws('|', " + ", ".join(f"coalesce(CAST({p}{c} AS VARCHAR), '␀')" for c in HASHED) + "))"
 
 
 def _cols(prefix: str = "") -> str:
@@ -82,6 +88,7 @@ CREATE TABLE IF NOT EXISTS fec_totals (
     PRIMARY KEY (candidate_slug, candidate_id, cycle)
 );
 CREATE TABLE IF NOT EXISTS fec_totals_history AS SELECT *, NULL::TIMESTAMP AS fetched_at FROM fec_totals WHERE false;
+CREATE TABLE IF NOT EXISTS store_meta (key VARCHAR PRIMARY KEY, value VARCHAR);
 CREATE TABLE IF NOT EXISTS fetch_state (
     candidate_slug VARCHAR, source VARCHAR, scope VARCHAR, cursor JSON, complete BOOLEAN,
     rows_loaded BIGINT, updated_at TIMESTAMP DEFAULT current_timestamp,
@@ -89,16 +96,22 @@ CREATE TABLE IF NOT EXISTS fetch_state (
 );
 """
 
+_COUNTS = "NOT coalesce(is_memo, false) AND coalesce(contribution_kind, 'monetary') NOT IN ('loan', 'other_receipt')"
 VIEWS = f"""
 CREATE OR REPLACE VIEW contributions_clean AS
-    SELECT {_cols()} FROM contributions WHERE NOT coalesce(is_memo, false) AND removed_at IS NULL;
+    SELECT {_cols()} FROM contributions WHERE {_COUNTS} AND removed_at IS NULL;
 CREATE OR REPLACE MACRO contributions_as_of(ts) AS TABLE
     SELECT {_cols()} FROM contributions
-        WHERE valid_from <= ts AND (removed_at IS NULL OR removed_at > ts) AND NOT coalesce(is_memo, false)
+        WHERE valid_from <= ts AND (removed_at IS NULL OR removed_at > ts) AND {_COUNTS}
     UNION ALL
     SELECT {_cols()} FROM contribution_history
-        WHERE valid_from <= ts AND valid_to > ts AND NOT coalesce(is_memo, false);
-"""
+        WHERE valid_from <= ts AND valid_to > ts AND {_COUNTS};
+""" + MACROS
+
+
+# Bump when the hashed column set changes. Stored hashes are then recomputed and any history versions that
+# differ only in no-longer-hashed columns are folded back (see _rehash).
+HASH_VERSION = "2:" + ",".join(HASHED)
 
 
 def now() -> _dt.datetime:
@@ -110,9 +123,20 @@ def _migrate(con) -> None:
     con.execute(DDL)
     con.execute("DROP VIEW IF EXISTS contributions_clean")  # views block ALTER
     existing = {r[0] for r in con.execute("DESCRIBE contributions").fetchall()}
-    for c, t in TRACKING:
+    for c, t in [*[(d, dict(CONTRIBUTION_COLUMNS)[d]) for d in DERIVED], *TRACKING]:
         if c not in existing:
             con.execute(f"ALTER TABLE contributions ADD COLUMN {c} {t}")
+    hist = [r[0] for r in con.execute("DESCRIBE contribution_history").fetchall()]
+    for d in DERIVED:
+        if d not in hist:  # history rows must keep the base-column order of contributions: rebuild if needed
+            con.execute(f"CREATE TABLE contribution_history_new ({_DEFS}, row_hash VARCHAR, valid_from TIMESTAMP, "
+                        "valid_to TIMESTAMP, change VARCHAR)")
+            keep = [c for c in COLUMN_NAMES if c in hist]
+            con.execute(f"INSERT INTO contribution_history_new ({', '.join(keep)}, row_hash, valid_from, valid_to, change) "
+                        f"SELECT {', '.join(keep)}, row_hash, valid_from, valid_to, change FROM contribution_history")
+            con.execute("DROP TABLE contribution_history")
+            con.execute("ALTER TABLE contribution_history_new RENAME TO contribution_history")
+            break
     # rows that predate history tracking: treat them as first observed now
     if con.execute("SELECT count(*) FROM contributions WHERE row_hash IS NULL").fetchone()[0]:
         ts = now()
@@ -120,6 +144,29 @@ def _migrate(con) -> None:
                     "last_seen = coalesce(last_seen, ?), valid_from = coalesce(valid_from, ?) WHERE row_hash IS NULL",
                     [ts, ts, ts])
     con.execute(VIEWS)
+    _rehash(con)
+
+
+def _rehash(con) -> None:
+    """Recompute row hashes when HASH_VERSION changes, and drop history versions that were only created because
+    a derived (unhashed) column changed: same hashed values as the version that replaced them."""
+    cur = con.execute("SELECT value FROM store_meta WHERE key = 'hash_version'").fetchone()
+    if cur and cur[0] == HASH_VERSION:
+        return
+    con.execute(f"UPDATE contributions SET row_hash = {_hash_expr()}")
+    con.execute(f"UPDATE contribution_history SET row_hash = {_hash_expr()}")
+    same = " AND ".join(f"h.{c} IS NOT DISTINCT FROM c.{c}" for c in HASHED)
+    keys = " AND ".join(f"h.{k} = c.{k}" for k in KEY)
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE spurious AS
+        SELECT h.source, h.transaction_id, h.candidate_slug, h.valid_from, h.valid_to FROM contribution_history h
+        JOIN contributions c ON {keys}
+        WHERE h.change = 'modified' AND h.valid_to = c.valid_from AND {same}""")
+    con.execute("""UPDATE contributions AS c SET valid_from = s.valid_from FROM spurious s
+        WHERE c.source = s.source AND c.transaction_id = s.transaction_id AND c.candidate_slug = s.candidate_slug""")
+    con.execute("""DELETE FROM contribution_history h USING spurious s
+        WHERE h.source = s.source AND h.transaction_id = s.transaction_id AND h.candidate_slug = s.candidate_slug
+          AND h.valid_to = s.valid_to AND h.change = 'modified'""")
+    con.execute("INSERT OR REPLACE INTO store_meta VALUES ('hash_version', ?)", [HASH_VERSION])
 
 
 @contextmanager
@@ -174,7 +221,9 @@ def _merge(con, slug: str, source: str, full: bool, scope: str = "", scope_sql: 
     con.execute(f"""UPDATE contributions AS c SET {sets}, row_hash = s.row_hash, valid_from = ?, last_seen = ?,
                     removed_at = NULL
         FROM staged s WHERE {key_eq} AND {in_diff("'modified', 'restored'")}""", [ts, ts])
-    con.execute(f"UPDATE contributions AS c SET last_seen = ? WHERE {in_diff(chr(39) + 'unchanged' + chr(39))}", [ts])
+    derived_sets = ", ".join(f"{d} = s.{d}" for d in DERIVED)
+    con.execute(f"""UPDATE contributions AS c SET last_seen = ?, {derived_sets} FROM staged s
+        WHERE {key_eq} AND {in_diff(chr(39) + 'unchanged' + chr(39))}""", [ts])
     con.execute(f"""INSERT INTO contributions ({_cols()}, row_hash, first_seen, last_seen, valid_from, removed_at)
         SELECT {_cols('s.')}, s.row_hash, ?, ?, ?, NULL FROM staged s
         JOIN diff d ON {" AND ".join(f"d.{k} = s.{k}" for k in KEY)} WHERE d.kind = 'new'""", [ts, ts, ts])

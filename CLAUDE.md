@@ -58,6 +58,11 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
   Type: "CSV"}. Years before 2025 return a header only. Same broken-quote problem as PA. Loans share
   the file (exclude them). Amended copies repeat transaction IDs (latest report_filed_date wins).
   Raffensperger and Bottoms are absent from the export: a known gap, not yet explained.
+- Scripted edits: `str.replace` silently no-ops when the target is missing (store.py contains a literal ␀).
+  Always `assert old in s` first. A missed edit once made 62,097 rows look amended.
+- Never glob data files: iCloud creates `name 2.parquet` conflict copies. Use `_common.parquet_list`/`data_files`.
+- Labels (labels.py): party, self_match macro (surname word + first 4 letters), contribution_kind (DERIVED, not
+  hashed; bump store.HASH_VERSION if the hashed set changes), conduits. Loans are labeled, never counted.
 - Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
   against an independent parse first.
 

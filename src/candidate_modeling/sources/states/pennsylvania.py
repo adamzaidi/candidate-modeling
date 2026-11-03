@@ -31,7 +31,7 @@ import duckdb
 
 from ...config import state_dir
 from ... import store
-from ._common import (case_map, download, parse_line, read_manifest, remote_last_modified, sql_str, tempdir,  # noqa: F401
+from ._common import (case_map, data_files, parquet_list, download, parse_line, read_manifest, remote_last_modified, sql_str, tempdir,  # noqa: F401
                       to_clean_csv, write_manifest)
 
 STATE = "PA"
@@ -113,7 +113,7 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
 
 def synced_years() -> list[int]:
     _, p = _dirs()
-    return sorted(int(re.search(r"(\d{4})", f.name).group(1)) for f in p.glob("contrib_*.parquet"))
+    return sorted(int(f.name[8:12]) for f in data_files(p, r"contrib_\d{4}\.parquet"))
 
 
 def is_synced() -> bool:
@@ -122,7 +122,7 @@ def is_synced() -> bool:
 
 def _glob(kind: str) -> str:
     _, p = _dirs()
-    return sql_str(p / f"{kind}_*.parquet")
+    return parquet_list(p, rf"{kind}_\d{{4}}\.parquet")
 
 
 # ---------- search / load ----------
@@ -202,7 +202,9 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                     ELSE 'individual' END,
                trim(CITY), upper(trim(STATE)), left(trim(ZIPCODE), 5),
                nullif(trim(ENAME), ''), nullif(trim(OCCUPATION), ''), false,
-               (coalesce(year(d), EYEAR::INTEGER) + coalesce(year(d), EYEAR::INTEGER) % 2)::INTEGER
+               (coalesce(year(d), EYEAR::INTEGER) + coalesce(year(d), EYEAR::INTEGER) % 2)::INTEGER,
+               CASE WHEN Section IN ('IIF', 'IIG') THEN 'in_kind'
+                    WHEN try_cast(amt AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END
         FROM u WHERE try_cast(amt AS DOUBLE) <> 0
     """
     ids = list(ids) if ids is not None else []
@@ -236,19 +238,37 @@ PARTY_NAME = r"\b(DEMOCRATIC|REPUBLICAN|LIBERTARIAN|GREEN)\b.*\b(COMMITTEE|PARTY
 
 
 def committees_sql() -> str:
+    """Candidates (FILERTYPE 1) and their committees (FILERTYPE 2 with an office) have different FILERIDs and no link
+    field. A committee is matched to the candidate filer with the same office and district whose surname appears in
+    the committee's name (rule self-funding uses the matched name)."""
+    from ... import labels as L
     return f"""
         WITH f AS (
             SELECT FILERID AS committee_id,
                    arg_max(trim(FILERNAME), SubmittedDate) AS committee_name,
                    arg_max(FILERTYPE, SubmittedDate) AS ftype,
                    arg_max(nullif(trim(OFFICE), ''), SubmittedDate) AS office_raw,
-                   arg_max(nullif(nullif(trim(DISTRICT), ''), '-1'), SubmittedDate) AS district
+                   arg_max(nullif(nullif(trim(DISTRICT), ''), '-1'), SubmittedDate) AS district,
+                   arg_max(nullif(trim(PARTY), ''), SubmittedDate) AS party_raw
             FROM read_parquet({_glob('filer')}) GROUP BY FILERID),
         k AS (
             SELECT *, CASE WHEN ftype = '1' OR office_raw IS NOT NULL THEN 'candidate'
                            WHEN ftype = '2' AND regexp_matches(upper(committee_name), {sql_str(PARTY_NAME)}) THEN 'party_committee'
-                           WHEN ftype = '2' THEN 'pac' ELSE 'other_committee' END AS kind FROM f)
-        SELECT committee_id, committee_name, kind, office_raw,
-               CASE WHEN kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE kind END AS office_category,
-               district
-        FROM k"""
+                           WHEN ftype = '2' THEN 'pac' ELSE 'other_committee' END AS kind FROM f),
+        c1 AS (
+            SELECT committee_id AS cid, office_raw, district,
+                   {L.name_last_sql("committee_name")} AS last, {L.name_first_sql("committee_name")} AS first
+            FROM k WHERE ftype = '1'),
+        link AS (
+            SELECT k.committee_id, arg_max(c1.last, c1.cid) AS last, arg_max(c1.first, c1.cid) AS first
+            FROM k JOIN c1 ON c1.office_raw = k.office_raw AND coalesce(c1.district, '') = coalesce(k.district, '')
+                 AND length(c1.last) > 1
+                 AND regexp_matches(upper(k.committee_name), '\\b' || regexp_escape(upper(c1.last)) || '\\b')
+            WHERE k.ftype <> '1' AND k.kind = 'candidate' GROUP BY k.committee_id)
+        SELECT k.committee_id, k.committee_name, kind, k.office_raw,
+               CASE WHEN kind = 'candidate' THEN {case_map("k.office_raw", OFFICE_MAP)} ELSE kind END AS office_category,
+               k.district, {L.committee_party_sql("party_raw", "kind", "k.committee_name")} AS party,
+               CASE WHEN ftype = '1' THEN {L.name_last_sql("k.committee_name")} ELSE link.last END AS cand_last,
+               CASE WHEN ftype = '1' THEN {L.name_first_sql("k.committee_name")} ELSE link.first END AS cand_first,
+               {L.conduit_sql("k.committee_name")} AS is_conduit
+        FROM k LEFT JOIN link USING (committee_id)"""

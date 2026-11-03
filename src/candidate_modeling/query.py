@@ -9,7 +9,7 @@ from . import store
 from .config import data_dir
 from .pipeline import CAVEATS
 from .sources.states import michigan, texas
-from .sources.states._common import sql_str
+from .sources.states._common import parquet_list, sql_str
 
 MAX_ROWS = 500
 ALLOWED = {duckdb.StatementType.SELECT, duckdb.StatementType.EXPLAIN}
@@ -20,12 +20,12 @@ def _state_views(con) -> list[str]:
     if texas.is_synced():
         _, parts = texas._dirs()
         con.execute(f"CREATE TEMP VIEW tx_filers AS SELECT * FROM read_parquet({sql_str(parts.parent / 'filers.parquet')})")
-        con.execute(f"CREATE TEMP VIEW tx_contribs_raw AS SELECT * FROM read_parquet({sql_str(parts / '*.parquet')}) "
+        con.execute(f"CREATE TEMP VIEW tx_contribs_raw AS SELECT * FROM read_parquet({parquet_list(parts, texas.CONTRIB_PARQUET)}) "
                     "WHERE coalesce(infoOnlyFlag, 'N') <> 'Y'")
         made += ["tx_filers", "tx_contribs_raw"]
     if michigan.synced_years():
         _, p = michigan._dirs()
-        con.execute(f"CREATE TEMP VIEW mi_contribs_raw AS SELECT * FROM read_parquet({sql_str(p / 'contributions_*.parquet')})")
+        con.execute(f"CREATE TEMP VIEW mi_contribs_raw AS SELECT * FROM read_parquet({parquet_list(p, michigan.PARQUET)})")
         made.append("mi_contribs_raw")
     return made
 

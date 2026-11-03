@@ -18,7 +18,7 @@ import duckdb
 
 from ...config import state_dir
 from ... import store
-from ._common import case_map, download, extract_member, read_manifest, remote_last_modified, sql_str, tempdir, write_manifest
+from ._common import data_files, parquet_list, case_map, download, extract_member, read_manifest, remote_last_modified, sql_str, tempdir, write_manifest
 
 STATE = "TX"
 SOURCE = "tx_tec"
@@ -26,6 +26,7 @@ ID_KEY = "filer_ids"        # profile ids.state.<STATE>.<ID_KEY>
 RESULT_ID = "filer_id"     # field in search() results holding that ID
 ZIP_URL = "https://prd.tecprd.ethicsefile.com/public/cf/public/TEC_CF_CSV.zip"
 CONTRIB_FILE = re.compile(r"^contribs_\d+\.csv$")
+CONTRIB_PARQUET = r"contribs_\d+\.parquet"
 
 FILER_COLS = ["filerIdent", "filerTypeCd", "filerName", "filerPersentTypeCd", "filerNameLast", "filerNameFirst",
               "ctaSeekOfficeCd", "ctaSeekOfficeDistrict", "filerHoldOfficeCd", "filerHoldOfficeDistrict",
@@ -33,7 +34,7 @@ FILER_COLS = ["filerIdent", "filerTypeCd", "filerName", "filerPersentTypeCd", "f
 SPAC_COLS = ["spacFilerIdent", "spacFilerTypeCd", "spacFilerName", "spacCommitteeStatusCd", "spacPositionCd",
              "candidateFilerIdent", "candidateFilerName", "candidateHoldOfficeCd", "candidateHoldOfficeDistrict",
              "candidateSeekOfficeCd", "candidateSeekOfficeDistrict"]
-CONTRIB_COLS = ["reportInfoIdent", "infoOnlyFlag", "filerIdent", "filerTypeCd", "filerName", "contributionInfoId",
+CONTRIB_COLS = ["schedFormTypeCd", "reportInfoIdent", "infoOnlyFlag", "filerIdent", "filerTypeCd", "filerName", "contributionInfoId",
                 "contributionDt", "contributionAmount", "contributorPersentTypeCd", "contributorNameOrganization",
                 "contributorNameLast", "contributorNameFirst", "contributorStreetCity", "contributorStreetStateCd",
                 "contributorStreetPostalCode", "contributorEmployer", "contributorOccupation"]
@@ -103,7 +104,7 @@ def sync(force: bool = False, keep_zip: bool = False) -> dict:
 
 def is_synced() -> bool:
     d, parts = _dirs()
-    return (parts.parent / "filers.parquet").exists() and any(parts.glob("*.parquet"))
+    return (parts.parent / "filers.parquet").exists() and bool(data_files(parts, CONTRIB_PARQUET))
 
 
 def _filers_path():
@@ -155,9 +156,24 @@ def covered_years() -> list[int]:
     return list(range(2001, date.today().year + 1)) if is_synced() else []
 
 
+IN_KIND_SCHEDULES = ("A2", "AJ2", "C2", "C4")  # CFS-Codes.txt: non-monetary (in-kind) contributions
+
+
+def _has_schedule() -> bool:
+    _, parts = _dirs()
+    first = next(iter(data_files(parts, CONTRIB_PARQUET)), None)
+    if not first:
+        return False
+    cols = [r[0] for r in duckdb.connect().execute(f"DESCRIBE SELECT * FROM read_parquet({sql_str(first)})").fetchall()]
+    return "schedFormTypeCd" in cols
+
+
 def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
     """SELECT yielding store.COLUMN_NAMES for the given filers (None = every filer in Texas)."""
     _, parts = _dirs()
+    kind = (f"CASE WHEN schedFormTypeCd IN ({', '.join(sql_str(x) for x in IN_KIND_SCHEDULES)}) THEN 'in_kind' "
+            "WHEN try_cast(contributionAmount AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END"
+            if _has_schedule() else "'monetary'")  # pre-0.4 parquet lacks the schedule column; re-sync to label
     where, params = "coalesce(infoOnlyFlag, 'N') <> 'Y'", [slug]
     if ids is not None:
         where += f" AND filerIdent IN ({', '.join('?' for _ in ids)})"
@@ -172,8 +188,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                CASE WHEN contributorPersentTypeCd = 'INDIVIDUAL' THEN 'individual' ELSE 'organization' END,
                contributorStreetCity, upper(contributorStreetStateCd), left(contributorStreetPostalCode, 5),
                contributorEmployer, contributorOccupation, false,
-               (year(d) + year(d) % 2)::INTEGER
-        FROM read_parquet({sql_str(parts / '*.parquet')})
+               (year(d) + year(d) % 2)::INTEGER, {kind}
+        FROM read_parquet({parquet_list(parts, CONTRIB_PARQUET)})
         WHERE {where}
     """
     return sql, params
@@ -219,6 +235,7 @@ def committees_sql() -> str:
     office of its own. The TEC SPAC index links SPACs to the candidates they SUPPORT/ASSIST/OPPOSE; a SPAC that
     supports or assists exactly one candidate is treated as that candidate's committee (rule linked-committees).
     """
+    from ... import labels as L
     _, parts = _dirs()
     f = sql_str(parts.parent / "filers.parquet")
     spacs = parts.parent / "spacs.parquet"
@@ -237,22 +254,31 @@ def committees_sql() -> str:
                    arg_max(coalesce(nullif(ctaSeekOfficeCd, ''), nullif(filerHoldOfficeCd, '')),
                            coalesce(filerEffStartDt, '')) AS office_raw,
                    arg_max(coalesce(nullif(ctaSeekOfficeDistrict, ''), nullif(filerHoldOfficeDistrict, '')),
-                           coalesce(filerEffStartDt, '')) AS district
+                           coalesce(filerEffStartDt, '')) AS district,
+                   arg_max(nullif(trim(filerNameLast), ''), coalesce(filerEffStartDt, '')) AS last_name,
+                   arg_max(nullif(trim(filerNameFirst), ''), coalesce(filerEffStartDt, '')) AS first_name
             FROM read_parquet({f}) GROUP BY filerIdent),
         l AS ({links}),
         j AS (
             SELECT f.*, {case_map("f.ftype", KIND_MAP, "'other_committee'")} AS base_kind,
                    l.n, l.cand, coalesce(cf.office_raw, l.cand_office) AS cand_office,
-                   coalesce(cf.district, l.cand_district) AS cand_district
+                   coalesce(cf.district, l.cand_district) AS cand_district,
+                   cf.last_name AS linked_last, cf.first_name AS linked_first
             FROM f LEFT JOIN l USING (committee_id) LEFT JOIN f cf ON cf.committee_id = l.cand),
         k AS (
             SELECT committee_id, committee_name,
                    CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN 'candidate' ELSE base_kind END AS kind,
                    CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN cand_office ELSE office_raw END AS office_raw,
                    CASE WHEN base_kind = 'pac' AND n = 1 AND cand_office IS NOT NULL THEN cand_district ELSE district END AS district,
-                   CASE WHEN base_kind = 'pac' AND n = 1 THEN cand END AS linked_candidate_id
+                   CASE WHEN base_kind = 'pac' AND n = 1 THEN cand END AS linked_candidate_id,
+                   CASE WHEN base_kind = 'pac' AND n = 1 THEN linked_last
+                        WHEN base_kind = 'candidate' THEN last_name END AS cand_last,
+                   CASE WHEN base_kind = 'pac' AND n = 1 THEN linked_first
+                        WHEN base_kind = 'candidate' THEN first_name END AS cand_first
             FROM j)
         SELECT committee_id, committee_name, kind, office_raw,
                CASE WHEN kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE kind END AS office_category,
-               district, linked_candidate_id
+               district, linked_candidate_id,
+               {L.committee_party_sql("NULL", "kind", "committee_name")} AS party,  -- TEC: no party field
+               cand_last, cand_first, {L.conduit_sql("committee_name")} AS is_conduit
         FROM k"""

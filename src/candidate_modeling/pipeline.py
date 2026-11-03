@@ -1,7 +1,7 @@
 """High-level operations shared by the CLI and the MCP server."""
 import datetime as _dt
 
-from . import config, store
+from . import config, labels, store
 from .sources import fec, states
 
 
@@ -168,6 +168,25 @@ def finance_summary(slug: str, jurisdiction: str | None = None, cycle: int | Non
         out["top_occupations"] = q(f"""SELECT upper(occupation) AS occupation, count(*) AS n, round(sum(amount), 2) AS total
                                       FROM {src} WHERE {w} AND occupation IS NOT NULL
                                       GROUP BY 1 ORDER BY total DESC LIMIT {int(top_n)}""")
+        first, last = labels.first_last(p.get("name"))
+        sf = con.execute(f"""SELECT round(coalesce(sum(amount) FILTER (WHERE contributor_type = 'individual'
+                                     AND self_match(contributor_name, ?, ?)), 0), 2),
+                                    round(sum(amount), 2),
+                                    round(coalesce(sum(amount) FILTER (WHERE {labels.conduit_sql("contributor_name")}), 0), 2)
+                             FROM {src} WHERE {w}""", [last, first, *params]).fetchone()
+        out["labels"] = {
+            "party": labels.normalize_party(p.get("party")),
+            "self_funding": {"total": sf[0], "pct_of_total": round(100 * sf[0] / sf[1], 1) if sf[1] else None,
+                             "matched_on": {"first": first, "last": last}},
+            "from_conduit_total": sf[2],
+            "loans": records(con.execute(f"""SELECT round(coalesce(sum(amount), 0), 2) AS loans_total,
+                    round(coalesce(sum(amount) FILTER (WHERE self_match(contributor_name, ?, ?)), 0), 2) AS self_loans_total
+                FROM contributions WHERE {w} AND contribution_kind = 'loan' AND removed_at IS NULL""",
+                [last, first, *params]))[0],
+            "by_kind": q(f"""SELECT coalesce(contribution_kind, 'monetary') AS kind, count(*) AS n,
+                                    round(sum(amount), 2) AS total
+                             FROM {src} WHERE {w} GROUP BY 1 ORDER BY total DESC"""),
+        }
         out["by_month"] = q(f"""SELECT strftime(date_trunc('month', date), '%Y-%m') AS month, count(*) AS n,
                                       round(sum(amount), 2) AS total
                                FROM {src} WHERE {w} GROUP BY 1 ORDER BY 1""")
@@ -210,6 +229,8 @@ def compare_candidates(slugs: list[str], jurisdiction: str | None = None, cycle:
             "pct_itemized_individual_under_200": round(100 * (small.get("total") or 0) / ind_total, 1) if ind_total else None,
             "top_states": [r["state"] for r in sm["geography"]["top_states"]],
             "top_employers": [r["employer"] for r in sm["top_employers"]],
+            "pct_self_funded": sm["labels"]["self_funding"]["pct_of_total"],
+            "party": sm["labels"]["party"],
         })
     return rows
 

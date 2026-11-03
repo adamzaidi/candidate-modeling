@@ -18,6 +18,8 @@ History: contribution_changes shows amendments/removals between loads; finance_s
 macro contributions_as_of(ts) show past states. compare_elections compares election windows (e.g. 2025 vs
 2026) statewide or for profiled candidates.
 Call data_scope to see what is covered on this machine, and describe_schema before writing SQL.
+data_scope.not_yet_available lists features that do NOT exist yet (expenditures, outside spending, industry,
+incumbency, outcomes, ...): say so instead of approximating them.
 
 RULES (always apply; cite rule ids when explaining numbers):
 """ + scope.rules_text()
@@ -118,17 +120,20 @@ def data_scope() -> dict:
 @server.tool()
 def compare_elections(years: list[int], state: str | None = None, slugs: list[str] | None = None,
                       stage: str = "general", group_by: str | None = None, office: list[str] | None = None,
-                      kind: list[str] | None = None, checkpoints: list[int] | None = None) -> dict:
+                      kind: list[str] | None = None, party: list[str] | None = None,
+                      checkpoints: list[int] | None = None) -> dict:
     """Compare money across election windows. state= for every committee in a synced state, or slugs= for profiled
     candidates. stage: general (default) | primary | primary_runoff | general_campaign | general_runoff (dates from
-    the sourced calendar; data_scope lists it). group_by: 'office' or 'kind' (statewide only). office/kind: filter
-    to categories, e.g. office=["governor"] (see data_scope office_categories).
+    the sourced calendar; data_scope lists it). group_by: 'office', 'kind', or 'party' (statewide only).
+    office/kind/party: filter to categories, e.g. office=["governor"], party=["democratic"] (see data_scope).
+    Each year also reports self_funding_total/pct_self_funded, in_kind_total, returns_total,
+    conduit_recipient_total and total_excluding_conduits.
     Returns per-year totals, individuals-only, small-dollar, donors, in-state share, cumulative money at
     days-before checkpoints, top recipients/donors and concentration, coverage, and year-over-year changes
     (skipped when a window is not fully covered)."""
     kw = {"checkpoints": tuple(checkpoints)} if checkpoints else {}
     return elections.compare_elections(years, state=state, slugs=slugs, stage=stage, group_by=group_by,
-                                       office=office, kind=kind, **kw)
+                                       office=office, kind=kind, party=party, **kw)
 
 
 @server.tool()

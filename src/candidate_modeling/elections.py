@@ -17,7 +17,7 @@ from functools import lru_cache
 import duckdb
 import yaml
 
-from . import config, store
+from . import config, labels, store
 from .pipeline import records
 from .sources import states
 
@@ -133,8 +133,16 @@ def _metrics_sql(base: str, windows: dict[int, dict], checkpoints, home_state_sq
     cps = ", ".join(
         f"round(coalesce(sum(amount) FILTER (WHERE days_before >= {c}), 0), 2) AS raised_by_{c}d" for c in checkpoints)
     g_sel, g_by = (f"{group} AS grp, ", ", grp") if group else ("", "")
+    g_by_l = f", {group} AS grp" if group else ""
     return f"""
-        WITH base AS ({base}), w AS ({_windows_sql(windows)})
+        WITH base AS ({base}), w_all AS ({_windows_sql(windows)}),
+             w AS (SELECT * FROM w_all WHERE {_COUNTED}),
+             loans AS (SELECT election_year{g_by_l},
+                              round(sum(amount), 2) AS loans_total,
+                              round(coalesce(sum(amount) FILTER (WHERE self_match(contributor_name, cand_last, cand_first)), 0), 2)
+                                  AS self_loans_total
+                       FROM w_all WHERE contribution_kind = 'loan' GROUP BY ALL),
+             m AS (
         SELECT election_year, {g_sel}
                count(*) AS rows,
                round(sum(amount), 2) AS total,
@@ -143,6 +151,17 @@ def _metrics_sql(base: str, windows: dict[int, dict], checkpoints, home_state_sq
                round(sum(amount) FILTER (WHERE contributor_type = 'unitemized'), 2) AS unitemized_total,
                round(sum(amount) FILTER (WHERE contributor_type = 'individual' AND amount < 200), 2)
                    AS individual_under_200_total,
+               round(coalesce(sum(amount) FILTER (WHERE contributor_type = 'individual'
+                     AND self_match(contributor_name, cand_last, cand_first)), 0), 2) AS self_funding_total,
+               round(100.0 * coalesce(sum(amount) FILTER (WHERE contributor_type = 'individual'
+                     AND self_match(contributor_name, cand_last, cand_first)), 0) / nullif(sum(amount), 0), 1)
+                   AS pct_self_funded,
+               round(coalesce(sum(amount) FILTER (WHERE contribution_kind = 'in_kind'), 0), 2) AS in_kind_total,
+               round(coalesce(sum(amount) FILTER (WHERE contribution_kind = 'return'), 0), 2) AS returns_total,
+               round(coalesce(sum(amount) FILTER (WHERE is_conduit), 0), 2) AS conduit_recipient_total,
+               round(sum(amount) FILTER (WHERE NOT is_conduit), 2) AS total_excluding_conduits,
+               round(coalesce(sum(amount) FILTER (WHERE {labels.conduit_sql("contributor_name")}), 0), 2)
+                   AS from_conduit_total,
                count(DISTINCT (contributor_name, zip)) FILTER (WHERE contributor_type = 'individual')
                    AS approx_individual_donors,
                count(DISTINCT committee_id) AS recipients,
@@ -150,12 +169,18 @@ def _metrics_sql(base: str, windows: dict[int, dict], checkpoints, home_state_sq
                      / nullif(sum(amount) FILTER (WHERE state IS NOT NULL), 0), 1) AS pct_in_state_dollars,
                {cps},
                min(date) AS first_date, max(date) AS last_date
-        FROM w GROUP BY election_year{g_by} ORDER BY election_year{g_by}"""
+        FROM w GROUP BY election_year{g_by})
+        SELECT m.*, coalesce(loans.loans_total, 0) AS loans_total, coalesce(loans.self_loans_total, 0) AS self_loans_total
+        FROM m LEFT JOIN loans USING (election_year{g_by})
+        ORDER BY election_year{g_by}"""
+
+
+_COUNTED = "coalesce(contribution_kind, 'monetary') NOT IN ('loan', 'other_receipt')"  # rule loans-excluded
 
 
 def _in_window(base: str, w: dict) -> str:
     return (f"WITH base AS ({base}) SELECT * FROM base "
-            f"WHERE date > DATE '{w['start_exclusive']}' AND date <= DATE '{w['end']}'")
+            f"WHERE date > DATE '{w['start_exclusive']}' AND date <= DATE '{w['end']}' AND {_COUNTED}")
 
 
 def _top_recipients(con, base: str, w: dict, n: int = 5) -> list[dict]:
@@ -184,7 +209,7 @@ def _pct(x, y):
 
 def _deltas(rows: list[dict], checkpoints) -> list[dict]:
     out = []
-    keys = ["total", "individuals_total", *[f"raised_by_{c}d" for c in checkpoints]]
+    keys = ["total", "individuals_total", "total_excluding_conduits", *[f"raised_by_{c}d" for c in checkpoints]]
     rows = [r for r in rows if r.get("window")]
     for a, b in zip(rows, rows[1:]):
         if a["coverage"]["status"] != "complete" or b["coverage"]["status"] != "complete":
@@ -219,7 +244,7 @@ def _in_list(values) -> str:
 # ---------- main entry ----------
 
 def compare_elections(years: list[int], state: str | None = None, slugs: list[str] | None = None,
-                      stage: str = "general", group_by: str | None = None, office=None, kind=None,
+                      stage: str = "general", group_by: str | None = None, office=None, kind=None, party=None,
                       checkpoints=DEFAULT_CHECKPOINTS, top_n: int = 5, today: _dt.date | None = None) -> dict:
     """Compare money across election windows.
 
@@ -227,15 +252,15 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
     slugs=   profiled candidates from the local DB (all their sources)
     stage=   general | primary | primary_runoff | general_campaign | general_runoff (non-general needs a state
              or candidates who share one home state)
-    group_by=office | kind   (statewide only) per-office or per-committee-type breakdown
-    office=, kind=           (statewide only) filter to categories, e.g. office="governor" or ["state_house", "state_senate"]
+    group_by=office | kind | party   (statewide only) breakdown by office, committee type, or recipient party
+    office=, kind=, party=   (statewide only) filter to categories, e.g. office="governor", party="democratic"
     """
     if not years or bool(state) == bool(slugs):
         raise ValueError("Pass years and exactly one of state= or slugs=.")
-    if slugs and (group_by or office or kind):
-        raise ValueError("group_by/office/kind need state= (offices come from the state's committee registry).")
-    if group_by not in (None, "office", "kind"):
-        raise ValueError("group_by must be 'office' or 'kind'.")
+    if slugs and (group_by or office or kind or party):
+        raise ValueError("group_by/office/kind/party need state= (labels come from the state's committee registry).")
+    if group_by not in (None, "office", "kind", "party"):
+        raise ValueError("group_by must be 'office', 'kind', or 'party'.")
     years = sorted(set(int(y) for y in years))
     today = today or _dt.date.today()
     notes: list[str] = []
@@ -250,7 +275,8 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
         cal_state, covered, home = m.STATE, m.covered_years(), f"'{m.STATE}'"
         sql, params = m.normalized_sql(None, None)
         base = (f"SELECT b.*, coalesce(c.kind, 'other_committee') AS kind, "
-                f"coalesce(c.office_category, 'unknown') AS office_category, c.office_raw "
+                f"coalesce(c.office_category, 'unknown') AS office_category, c.office_raw, "
+                f"coalesce(c.party, 'unknown') AS party, c.cand_last, c.cand_first, coalesce(c.is_conduit, false) AS is_conduit "
                 f"FROM ({_inline(sql, params)}) b({', '.join(store.COLUMN_NAMES)}) "
                 f"LEFT JOIN ({m.committees_sql()}) c USING (committee_id)")
         filters = []
@@ -258,24 +284,35 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
             filters.append(f"office_category IN ({_in_list(office)})")
         if kind:
             filters.append(f"kind IN ({_in_list(kind)})")
+        if party:
+            filters.append(f"party IN ({_in_list(party)})")
         if filters:
             base = f"SELECT * FROM ({base}) f WHERE {' AND '.join(filters)}"
         notes.append("Statewide totals count committee-to-committee transfers at each hop (rule "
-                     "statewide-double-count); individuals_total is the cleaner comparison.")
+                     "statewide-double-count); individuals_total and total_excluding_conduits are cleaner comparisons.")
         if office or group_by == "office":
             notes.append("Office = each committee's latest office on file (rule office-snapshot).")
-        subject = {"state": m.STATE, "source": m.SOURCE, "office": office, "kind": kind}
+        subject = {"state": m.STATE, "source": m.SOURCE, "office": office, "kind": kind, "party": party}
+        if party or group_by == "party":
+            notes.append("Party = the recipient committee's party on file (rule party-labels)"
+                         + ("; Texas files carry no party, so everything is 'unknown'." if m.STATE == "TX" else "."))
         cov_fn = lambda w: _coverage_span(w["start_exclusive"], w["end"], covered)  # noqa: E731
         con, close = duckdb.connect(), True
+        labels.install_macros(con)
     else:
         profiles = [config.load_profile(s) for s in slugs]
         homes = {p["slug"]: (p.get("state") or "").upper() for p in profiles}
+        meta = {p["slug"]: (*labels.first_last(p.get("name")), labels.normalize_party(p.get("party"))) for p in profiles}
         if stage != "general" and len(set(homes.values())) != 1:
             raise ValueError("Non-general stages need candidates who share one home state.")
         cal_state = next(iter(homes.values())) or None
-        base = ("SELECT c.*, h.home FROM contributions_clean c JOIN (SELECT * FROM (VALUES "
-                + ", ".join(f"('{s}', '{h}')" for s, h in homes.items()) + ") v(slug, home)) h ON h.slug = c.candidate_slug "
-                f"WHERE c.candidate_slug IN ({', '.join(repr(s) for s in slugs)})")
+        q = lambda v: "NULL" if v is None else "'" + str(v).replace("'", "''") + "'"  # noqa: E731
+        base = ("SELECT c.*, h.home, h.cand_last, h.cand_first, h.party, false AS is_conduit FROM "
+                "(SELECT * FROM contributions WHERE removed_at IS NULL AND NOT coalesce(is_memo, false)) c "
+                "JOIN (SELECT * FROM (VALUES "
+                + ", ".join(f"({q(s)}, {q(h)}, {q(meta[s][1])}, {q(meta[s][0])}, {q(meta[s][2])})" for s, h in homes.items())
+                + ") v(slug, home, cand_last, cand_first, party)) h ON h.slug = c.candidate_slug "
+                f"WHERE c.candidate_slug IN ({', '.join(q(s) for s in slugs)})")
         home = "home"
         subject = {"candidates": slugs}
         cov_fn = lambda w: _slug_coverage(profiles, w)  # noqa: E731
@@ -322,16 +359,19 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
         result = {"subject": subject, "stage": stage, "years": out_rows, "changes": _deltas(out_rows, checkpoints),
                   "checkpoints_days_before": list(checkpoints), "notes": notes,
                   "rules_applied": ["election-window", "stage-window", "align-by-days", "coverage-first",
-                                    "reporting-lag", "self-funding", "clean-view", "itemized-only"]}
+                                    "reporting-lag", "self-funding", "contribution-kind", "conduits", "clean-view",
+                                    "itemized-only"]}
 
         if group_by and windows:
-            col = "office_category" if group_by == "office" else "kind"
+            col = {"office": "office_category", "kind": "kind", "party": "party"}[group_by]
             g = records(con.execute(_metrics_sql(base, windows, checkpoints, home, group=col)))
             cov_ok = {r["election_year"]: r["coverage"]["status"] == "complete" for r in out_rows if r.get("window")}
             groups: dict = {}
             for r in g:
                 groups.setdefault(r["grp"], {})[r["election_year"]] = {
-                    k: r[k] for k in ("total", "individuals_total", "rows", "recipients", "pct_in_state_dollars",
+                    k: r[k] for k in ("total", "individuals_total", "self_funding_total", "total_excluding_conduits",
+                                      "loans_total",
+                                      "rows", "recipients", "pct_in_state_dollars",
                                       *[f"raised_by_{c}d" for c in checkpoints])}
             ys = sorted(windows)
             breakdown = []

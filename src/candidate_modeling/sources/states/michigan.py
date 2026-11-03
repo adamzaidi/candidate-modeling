@@ -20,10 +20,11 @@ import requests
 
 from ...config import USER_AGENT, state_dir
 from ... import store
-from ._common import case_map, download, extract_member, read_manifest, sql_str, tempdir, write_manifest
+from ._common import case_map, data_files, parquet_list, download, extract_member, read_manifest, sql_str, tempdir, write_manifest
 
 STATE = "MI"
 SOURCE = "mi_boe"
+PARQUET = r"contributions_\d{4}\.parquet"  # exact names only (rule: never trust globs)
 ID_KEY = "committee_ids"        # profile ids.state.<STATE>.<ID_KEY>
 RESULT_ID = "committee_id"     # field in search() results holding that ID
 BASE = "https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do"
@@ -106,7 +107,7 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
 
 def synced_years() -> list[int]:
     _, p = _dirs()
-    return sorted(int(re.search(r"(\d{4})", f.name).group(1)) for f in p.glob("contributions_*.parquet"))
+    return sorted(int(f.name[14:18]) for f in data_files(p, PARQUET))
 
 
 def is_synced() -> bool:
@@ -128,7 +129,7 @@ def search(name: str) -> list[dict]:
                any_value(can_office_sought) AS office, any_value(can_district_sought) AS district,
                any_value(can_political_party) AS party,
                list_sort(list_distinct(list(try_cast(doc_stmnt_year AS INTEGER)))) AS years, count(*) AS n
-        FROM read_parquet({sql_str(p / 'contributions_*.parquet')})
+        FROM read_parquet({parquet_list(p, PARQUET)})
         WHERE com_type = 'Candidate' AND {where}
         GROUP BY cfr_com_id ORDER BY n DESC LIMIT 25""", params).fetchdf()
     return [{"source": SOURCE, "state": STATE, "committee_id": r.cfr_com_id, "committee": r.committee,
@@ -171,8 +172,11 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                CASE WHEN nullif(trim(contributor_f_name), '') IS NULL THEN 'organization' ELSE 'individual' END,
                trim(contributor_city), upper(trim(contributor_state)), left(trim(contributor_zip), 5),
                nullif(trim(contributor_employer), ''), nullif(trim(contributor_occupation), ''), false,
-               (year(d) + year(d) % 2)::INTEGER
-        FROM read_parquet({sql_str(p / 'contributions_*.parquet')})
+               (year(d) + year(d) % 2)::INTEGER,
+               CASE WHEN contribtype ILIKE '%loan%' THEN 'loan'
+                    WHEN contribtype ILIKE '%in-kind%' OR contribtype ILIKE '%in kind%' THEN 'in_kind'
+                    WHEN try_cast(replace(amount, ',', '') AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END
+        FROM read_parquet({parquet_list(p, PARQUET)})
         WHERE {where}
     """
     return sql, params
@@ -207,6 +211,9 @@ KIND_MAP = {"Candidate": "candidate", "Independent": "pac", "Political": "pac", 
 
 
 def committees_sql() -> str:
+    """committee_id, committee_name, kind, office_raw, office_category, district, party, cand_last, cand_first,
+    is_conduit."""
+    from ... import labels as L
     _, p = _dirs()
     return f"""
         WITH f AS (
@@ -214,9 +221,15 @@ def committees_sql() -> str:
                    arg_max(com_legal_name, doc_stmnt_year) AS committee_name,
                    arg_max(com_type, doc_stmnt_year) AS ctype,
                    arg_max(nullif(trim(can_office_sought), ''), doc_stmnt_year) AS office_raw,
-                   arg_max(nullif(trim(can_district_sought), ''), doc_stmnt_year) AS district
-            FROM read_parquet({sql_str(p / 'contributions_*.parquet')}) GROUP BY cfr_com_id)
+                   arg_max(nullif(trim(can_district_sought), ''), doc_stmnt_year) AS district,
+                   arg_max(nullif(trim(can_political_party), ''), doc_stmnt_year) AS party_raw,
+                   arg_max(nullif(trim(can_last_name), ''), doc_stmnt_year) AS cand_last,
+                   arg_max(nullif(trim(can_first_name), ''), doc_stmnt_year) AS cand_first
+            FROM read_parquet({parquet_list(p, PARQUET)}) GROUP BY cfr_com_id)
         SELECT committee_id, committee_name, k.kind, office_raw,
                CASE WHEN k.kind = 'candidate' THEN {case_map("office_raw", OFFICE_MAP)} ELSE k.kind END AS office_category,
-               district
+               district, {L.committee_party_sql("party_raw", "k.kind", "committee_name")} AS party,
+               CASE WHEN k.kind = 'candidate' THEN cand_last END AS cand_last,
+               CASE WHEN k.kind = 'candidate' THEN cand_first END AS cand_first,
+               {L.conduit_sql("committee_name")} AS is_conduit
         FROM f, LATERAL (SELECT {case_map("ctype", KIND_MAP, "'other_committee'")} AS kind) k"""

@@ -50,8 +50,8 @@ def main(argv=None):
     g = s.add_mutually_exclusive_group(required=True); g.add_argument("--state"); g.add_argument("--slugs", nargs="+")
     s.add_argument("--stage", default="general",
                    choices=["general", "primary", "primary_runoff", "general_campaign", "general_runoff"])
-    s.add_argument("--group-by", choices=["office", "kind"]); s.add_argument("--office", nargs="+")
-    s.add_argument("--kind", nargs="+")
+    s.add_argument("--group-by", choices=["office", "kind", "party"]); s.add_argument("--office", nargs="+")
+    s.add_argument("--kind", nargs="+"); s.add_argument("--party", nargs="+")
     sub.add_parser("scope")
     sub.add_parser("docs", help="regenerate the README data-scope section from scope.py")
     s = sub.add_parser("compare"); s.add_argument("slugs", nargs="+"); s.add_argument("--jurisdiction")
@@ -86,7 +86,7 @@ def main(argv=None):
     elif a.cmd == "compare-elections":
         from .elections import compare_elections
         _print(compare_elections(a.years, state=a.state, slugs=a.slugs, stage=a.stage, group_by=a.group_by,
-                                 office=a.office, kind=a.kind))
+                                 office=a.office, kind=a.kind, party=a.party))
     elif a.cmd == "scope":
         from .scope import data_scope
         _print(data_scope())

@@ -44,7 +44,15 @@ RULES: dict[str, list[tuple[str, str]]] = {
         ("clean-view",
          "Sum over contributions_clean (or contributions_as_of): they exclude memo rows (FEC sub-items) and "
          "rows that have been removed at the source."),
-        ("loans-excluded", "Loans, loan payments, and interest are not contributions and are excluded."),
+        ("loans-excluded",
+         "Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled "
+         "(contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. "
+         "Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), "
+         "available for MI, GA, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt)."),
+        ("contribution-kind",
+         "Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another "
+         "committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, "
+         "return, and transfer; in_kind_total and returns_total are reported separately."),
         ("returns-negative", "Returned contributions are negative amounts where the source reports them."),
         ("in-state-share",
          "In-state share counts only rows with a known donor state; unitemized lump sums are left out."),
@@ -54,9 +62,19 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "(PAC to candidate, party to candidate) and conduits that forward earmarked gifts (e.g. ActBlue Texas) "
          "are counted at each hop. Prefer the individuals-only total when comparing statewide money."),
         ("self-funding",
-         "A candidate's money to their own campaign is often typed 'individual' (e.g. $200M from Richard Jackson to "
-         "Jackson for Governor in GA, 2026). Check top_donors and pct_from_top_donor before reading individual "
-         "totals as grassroots support."),
+         "A candidate's money to their own campaign is usually typed 'individual' (e.g. $200M from Richard Jackson to "
+         "Jackson for Governor in GA, 2026). self_funding_total flags individual gifts whose donor name matches the "
+         "candidate (surname as a word plus the first 4 letters of the first name). Nicknames on one side only are "
+         "missed, so treat it as a floor and check top_donors and pct_from_top_donor too."),
+        ("conduits",
+         "Conduits (ActBlue, WinRed, and similar) forward earmarked gifts that candidates also itemize. Committees "
+         "flagged is_conduit (e.g. ActBlue Texas) are reported as conduit_recipient_total; total_excluding_conduits "
+         "removes them. Gifts whose donor is a conduit are reported as from_conduit_total."),
+        ("party-labels",
+         "Party is the recipient committee's party on file, normalized to democratic, republican, libertarian, green, "
+         "other, cross_filed (PA judicial cross-filing), nonpartisan, unknown (a candidate with no party on file), or "
+         "not_applicable (PACs and other non-party committees). Party committees take their party from their name. "
+         "Texas files carry no party, so TX candidates are 'unknown' until a candidate-list source is added."),
     ],
     "comparisons": [
         ("coverage-first",
@@ -131,6 +149,55 @@ OFFICE_CATEGORIES = {
 }
 
 
+# Not built yet. Rendered into the README and returned by data_scope so agents never claim these exist.
+ROADMAP = [
+    # labels deferred from the label round
+    ("incumbency", "Incumbent / challenger / open-seat label",
+     "Explains much of election-over-election change (e.g. PA governor 2022 open seat vs 2026 incumbent)",
+     "FEC incumbent_challenge; TX officeholder status; seat-holder lists elsewhere", "medium"),
+    ("in-district-share", "In-district donor share for legislative races",
+     "In-state share is too coarse for a state house seat", "Census ZIP-to-district crosswalk + stored district",
+     "medium"),
+    ("industry", "Donor industry classification",
+     "Which industries fund which offices", "Rules over employer/occupation text, validated on a hand-labeled sample",
+     "medium-high"),
+    ("outcomes", "Election outcomes (won / lost / runoff)", "Did money predict winners",
+     "State results files", "high"),
+    ("texas-party", "Party for Texas candidates", "TX is 'unknown' today", "TX SOS candidate filings / primary ballots",
+     "medium"),
+    # additional
+    ("expenditures", "Expenditures: where campaigns spend (vendors, consultants, media, salaries)",
+     "Half of campaign finance; every source already publishes it",
+     "TX expend_##, MI expenditure files, PA expense, GA TEXP, FEC Schedule B", "medium"),
+    ("outside-spending", "Independent expenditures and outside groups (super PACs, IE committees)",
+     "Money spent about a candidate, often larger than what they raise",
+     "FEC Schedule E, MI IE committees, TX direct campaign expenditures, GA IE", "medium-high"),
+    ("cash-and-debt", "Cash on hand, debts, and loans over time",
+     "Financial health and burn rate, not just money raised",
+     "TX cover sheets, PA filer BEGINNING, GA reports, FEC totals (already stored)", "medium"),
+    ("donor-resolution", "Donor entity resolution across sources and years",
+     "Enables donor overlap between candidates, repeat vs first-time donors, and state-to-federal donor migration "
+     "(e.g. Talarico's Texas House donors vs his Senate donors)", "Name + ZIP + employer matching", "high"),
+    ("legislation-link", "Link money to votes and bills",
+     "Who funds legislators who vote a given way", "Open States (key already configured)", "high"),
+    ("lobbying-contracts", "Lobbyist and government-contract cross-reference",
+     "Donors who lobby or hold state contracts", "State lobby registrations, contract databases", "high"),
+    ("normalization", "Inflation and per-capita adjustment",
+     "Fair cross-decade and cross-state comparisons", "CPI-U; Census population / registered voters", "low"),
+    ("alerts", "Alerts on new filings and amendments for watched candidates",
+     "History tracking already detects changes; this pushes them", "load_runs + scheduled refresh", "low"),
+    ("data-quality", "Sync data-quality monitors",
+     "Catch upstream format changes (row-count drops, new parse failures, schema drift)", "sync manifests", "low"),
+    ("local-and-measures", "Local races and ballot measures beyond state filers",
+     "Most offices are local", "County/city disclosure systems", "high"),
+    ("more-states", "More state connectors", "Coverage", "AZ, WI, NC, NV, FL, OH, CA, NY next", "per state"),
+]
+NOT_PLANNED = [
+    "Guessing donor gender, race, or ethnicity from names (unreliable and easy to misuse).",
+    "'Dark money' labels without documentary evidence (needs investigation, not field mapping).",
+]
+
+
 def _sources() -> dict:
     from .sources import fec, states
     out = {"FEC": fec.SCOPE}
@@ -159,6 +226,8 @@ def data_scope() -> dict:
     from . import elections
     return {"rules": {g: [{"id": i, "rule": t} for i, t in items] for g, items in RULES.items()},
             "office_categories": OFFICE_CATEGORIES, "election_calendar": elections.calendar_summary(),
+            "not_yet_available": [{"id": i, "item": t, "why": w} for i, t, w, _, _ in ROADMAP],
+            "not_planned": NOT_PLANNED,
             "sources": sources, "planned_states": PLANNED}
 
 
@@ -180,6 +249,14 @@ def render_markdown() -> str:
     out.append("### Office categories")
     out.append("")
     out += [f"- `{k}`: {v}" for k, v in OFFICE_CATEGORIES.items()]
+    out.append("")
+    out.append("### Roadmap (not built yet)")
+    out.append("")
+    out.append("| Item | Why | Source | Effort |")
+    out.append("|---|---|---|---|")
+    out += [f"| {t} | {w} | {src} | {e} |" for _, t, w, src, e in ROADMAP]
+    out.append("")
+    out.append("Deliberately not planned: " + " ".join(NOT_PLANNED))
     out.append("")
     out.append("### Sources")
     out.append("")
