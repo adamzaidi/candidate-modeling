@@ -1,0 +1,12 @@
+[project]
+name = "candidate-modeling"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["requests", "pyyaml", "python-dotenv", "pandas"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

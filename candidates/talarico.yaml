@@ -1,0 +1,14 @@
+slug: talarico
+name: James Talarico
+party: Democratic
+state: TX
+offices:
+  - office: Texas House of Representatives
+    district: 50   # verify district history; earlier terms may differ after redistricting
+  - office: U.S. Senate (2026 campaign)
+ids:
+  fec_candidate_id: S6TX00479
+  openstates_person_id: null  # fill in — ocd-person/...
+  tec_filer_id: null          # Texas Ethics Commission filer ID
+notes: |
+  Former teacher; seminary student. Profile facts should be verified against sources before analysis.
