@@ -73,6 +73,13 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
   Category codes give contribution_kind exactly. The officeIds filter targets IE subjects, NOT a committee's office,
   so WI has no office data; candidate committees carry no person name (no self-match). Years download into
   tx_YYYY_partial and are renamed only when complete, so a partial year is never read.
+- NC (NOT BUILT, research done): cf.ncsbe.gov/CFTxnLkup. GET AdvancedSearch -> __RequestVerificationToken;
+  POST AdvancedSearch with Filter.StartDate/EndDate (MM/DD/YYYY), Filter.ReceiptAll/CommitteeAll/OfficeAll/PartyAll=true,
+  Filter.IsOrg=false -> Results page; its grid has data-search-params (JSON). POST /CFTxnLkup/Export with
+  searchParamsJson + token -> CSV (transinq_results.csv; one day ~4k rows). CSV has no transaction ID and no
+  committee type/party/office; the JSON grid (GET Results?handler=PagedData&searchParamsJson=...&pageSize=500)
+  has CommTypeCode/PartyCode/CandOfficeCode but takes ~18s per 500 rows, so use it only for a committee lookup.
+  "Aggregated Individual Contribution" rows = unitemized.
 - Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
   against an independent parse first.
 
