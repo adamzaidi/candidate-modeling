@@ -51,6 +51,7 @@ SCOPE = {
         "contribution_kind comes from category flags: loans (commercial/personal), in-kind, returned "
         "contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).",
         "Recipients are the filing committee (createdByEntity); committee type and party come from its registration.",
+        "The API uses superjson: the paging cursor's date must be sent with meta {values: {cursor.date: [Date]}}.",
     ],
     "known_gaps": [
         "No office for candidate committees (not exposed by the public API), so office breakdowns are unavailable.",
@@ -86,11 +87,15 @@ STATE_NAMES = {
 
 
 def _call(proc: str, inp: dict, retries: int = 3) -> dict:
+    """tRPC with superjson: Date values must be flagged in meta (the cursor's date), or the server answers 400."""
     import time
 
+    payload = {"json": inp}
+    if isinstance(inp.get("cursor"), dict) and "date" in inp["cursor"]:
+        payload["meta"] = {"values": {"cursor.date": ["Date"]}}
     for attempt in range(retries + 1):
         try:
-            r = requests.get(f"{API}/{proc}", params={"input": json.dumps({"json": inp})},
+            r = requests.get(f"{API}/{proc}", params={"input": json.dumps(payload)},
                              headers={"User-Agent": USER_AGENT}, timeout=180)
             r.raise_for_status()
             return r.json()["result"]["data"]["json"]

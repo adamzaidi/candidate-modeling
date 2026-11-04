@@ -41,16 +41,19 @@ CALLS = {"tx": 0}
 def _cb(req):
     q = parse_qs(urlparse(req.url).query)
     proc = urlparse(req.url).path.rsplit("/", 1)[-1]
-    inp = json.loads(q["input"][0])["json"]
+    payload = json.loads(q["input"][0])
+    inp = payload["json"]
+    if inp.get("cursor") and payload.get("meta", {}).get("values", {}).get("cursor.date") != ["Date"]:
+        return 400, {}, json.dumps({"error": {"json": {"message": "Expected date, received string"}}})  # real server
     year = int(inp["dateFrom"][:4])
     assert inp["transactionType"] == [1]
     rows = ROWS.get(year, [])
     if proc == "publicFrontendApi.getTransactionsTotalCount":
         return 200, {}, json.dumps({"result": {"data": {"json": len(rows)}}})
     CALLS["tx"] += 1
-    start = int(inp.get("cursor", {}).get("pos", 0)) if inp.get("cursor") else 0
+    start = int(inp["cursor"]["id"]) if inp.get("cursor") else 0
     page = rows[start:start + inp["take"]]
-    nxt = {"pos": start + inp["take"]} if start + inp["take"] < len(rows) else None
+    nxt = {"id": start + inp["take"], "date": "2026-01-01T00:00:00.000Z"} if start + inp["take"] < len(rows) else None
     return 200, {}, json.dumps({"result": {"data": {"json": {"results": page, "nextCursor": nxt}}}})
 
 

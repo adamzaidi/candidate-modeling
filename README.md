@@ -290,6 +290,7 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Rule:** Only transactionType 1 (Contribution) loads; conduit release records (type 3) are not double counted.
 - **Rule:** contribution_kind comes from category flags: loans (commercial/personal), in-kind, returned contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).
 - **Rule:** Recipients are the filing committee (createdByEntity); committee type and party come from its registration.
+- **Rule:** The API uses superjson: the paging cursor's date must be sent with meta {values: {cursor.date: [Date]}}.
 - **Known gap:** No office for candidate committees (not exposed by the public API), so office breakdowns are unavailable.
 - **Known gap:** Candidate committees have no candidate person name, so name-based self-funding cannot be computed.
 - **Known gap:** No donor employer field; occupation only.
