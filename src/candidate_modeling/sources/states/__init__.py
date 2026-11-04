@@ -3,12 +3,12 @@ search(name), load(con, profile).
 
 To add a state: write `<state>.py` with that interface, register it here, add fixture tests.
 """
-from . import arizona, georgia, michigan, pennsylvania, texas, wisconsin
+from . import arizona, georgia, michigan, north_carolina, pennsylvania, texas, wisconsin
 
-REGISTRY = {m.STATE: m for m in (texas, michigan, pennsylvania, georgia, arizona, wisconsin)}
+REGISTRY = {m.STATE: m for m in (texas, michigan, pennsylvania, georgia, arizona, wisconsin, north_carolina)}
 
 # Priority order for upcoming connectors (competitive / high-spend states first).
-PLANNED = ["NC", "NV", "FL", "OH", "CA", "NY"]
+PLANNED = ["NV", "FL", "OH", "CA", "NY"]
 
 
 def get(state: str):

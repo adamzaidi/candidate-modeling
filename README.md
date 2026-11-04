@@ -15,7 +15,8 @@ as a CLI. First subject: **James Talarico** (Texas).
 | Georgia | [PeachFile](https://efile.ethics.ga.gov/) bulk API | Filings from 2025 on (legacy 2017-2024 not covered) | done |
 | Arizona | [See The Money](https://seethemoney.az.gov/) JSON endpoints, committee by committee | Per two-year cycle as synced (no bulk file) | done |
 | Wisconsin | [Sunshine](https://campaignfinance.wi.gov/) statewide API (replaced CFIS) | Since mid-2008; no office data | done |
-| Next | NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
+| North Carolina | [SBoE transaction search](https://cf.ncsbe.gov/CFTxnLkup/) CSV exports, month by month | Per calendar year as synced; no office data | done |
+| Next | NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
 | Legislative | [Open States](https://docs.openstates.org/api-v3/) | Bills, votes | first-pass fetcher |
 
 ## Quick start
@@ -295,6 +296,19 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Known gap:** No office for candidate committees (not exposed by the public API), so office breakdowns are unavailable.
 - **Known gap:** Candidate committees have no candidate person name, so name-based self-funding cannot be computed.
 - **Known gap:** No donor employer field; occupation only.
+
+#### NC: [North Carolina State Board of Elections](https://cf.ncsbe.gov/CFTxnLkup/)
+
+- **Covers:** State and county candidate committees, PACs, party committees, and referendum committees whose reports were entered into the SBoE database.
+- **History from:** Per calendar year as synced
+- **Refresh:** Month-by-month CSV exports (~10 s each) plus one export per party per month; a year takes a few minutes. Data on the site updates overnight.
+- **Excludes:** Federal candidates (use FEC); Reports filed only as scanned images (not data-entered)
+- **Rule:** Only receipts load: the export's expenditure types are cleared before each request.
+- **Rule:** 'Aggregated Individual Contribution' rows are lump sums: contributor_type 'unitemized'.
+- **Rule:** Party comes from the SBoE party filter (DEM/REP); other committees are not_applicable or unknown.
+- **Rule:** Candidate committees are recognized by the '(LAST, FIRST)' suffix SBoE adds to their names.
+- **Known gap:** No transaction ID: IDs are row hashes plus occurrence number, so NC history across syncs is approximate.
+- **Known gap:** No office in the export, so office breakdowns are unavailable; the committee ID prefix shows state (STA), federal (FED), or county-level committees (e.g. WAK, MEC).
 <!-- END GENERATED: data-scope -->
 
 ## Adding a state

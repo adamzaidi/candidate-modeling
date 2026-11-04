@@ -73,13 +73,11 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
   Category codes give contribution_kind exactly. The officeIds filter targets IE subjects, NOT a committee's office,
   so WI has no office data; candidate committees carry no person name (no self-match). Years download into
   tx_YYYY_partial and are renamed only when complete, so a partial year is never read.
-- NC (NOT BUILT, research done): cf.ncsbe.gov/CFTxnLkup. GET AdvancedSearch -> __RequestVerificationToken;
-  POST AdvancedSearch with Filter.StartDate/EndDate (MM/DD/YYYY), Filter.ReceiptAll/CommitteeAll/OfficeAll/PartyAll=true,
-  Filter.IsOrg=false -> Results page; its grid has data-search-params (JSON). POST /CFTxnLkup/Export with
-  searchParamsJson + token -> CSV (transinq_results.csv; one day ~4k rows). CSV has no transaction ID and no
-  committee type/party/office; the JSON grid (GET Results?handler=PagedData&searchParamsJson=...&pageSize=500)
-  has CommTypeCode/PartyCode/CandOfficeCode but takes ~18s per 500 rows, so use it only for a committee lookup.
-  "Aggregated Individual Contribution" rows = unitemized.
+- NC (sources/states/north_carolina.py): per-month CSV exports through the transaction search (token, then
+  data-search-params JSON, then Export). ExpenditureType must be cleared or expenditures leak into the receipts
+  export. Party comes from extra exports with PartyType 'DEM'/'REP'. Committees come from CFOrgLkup name=%
+  (embedded "Data":[...]); candidate committees end in "(LAST, FIRST)". No transaction IDs: hash plus occurrence
+  number, deduped on read. No office data.
 - Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
   against an independent parse first.
 
@@ -95,4 +93,4 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).
-- States done: TX, MI, PA, GA, AZ, WI. Next: NC, NV, FL, OH, CA, NY.
+- States done: TX, MI, PA, GA, AZ, WI, NC. Next: NV, FL, OH, CA, NY.

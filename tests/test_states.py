@@ -122,7 +122,7 @@ def test_michigan_sync_skips_unchanged(mi_zip):
 # ---------- registry ----------
 
 def test_registry_and_unknown_state():
-    assert set(states.REGISTRY) == {"TX", "MI", "PA", "GA", "AZ", "WI"}
+    assert set(states.REGISTRY) == {"TX", "MI", "PA", "GA", "AZ", "WI", "NC"}
     for m in states.REGISTRY.values():
         for attr in ("STATE", "SOURCE", "sync", "search", "load", "is_synced"):
             assert hasattr(m, attr), f"{m.__name__} missing {attr}"
