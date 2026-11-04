@@ -25,7 +25,7 @@ from contextlib import contextmanager
 import duckdb
 
 from .config import db_path
-from .labels import MACROS
+from .labels import COUNTED_SQL, MACROS
 
 CONTRIBUTION_COLUMNS = [
     ("candidate_slug", "VARCHAR"),
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS fetch_state (
 );
 """
 
-_COUNTS = "NOT coalesce(is_memo, false) AND coalesce(contribution_kind, 'monetary') NOT IN ('loan', 'other_receipt')"
+_COUNTS = "NOT coalesce(is_memo, false) AND " + COUNTED_SQL
 VIEWS = f"""
 CREATE OR REPLACE VIEW contributions_clean AS
     SELECT {_cols()} FROM contributions WHERE {_COUNTS} AND removed_at IS NULL;

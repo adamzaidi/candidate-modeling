@@ -47,8 +47,10 @@ RULES: dict[str, list[tuple[str, str]]] = {
         ("loans-excluded",
          "Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled "
          "(contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. "
-         "Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), "
-         "available for MI, GA, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt)."),
+         "Public campaign funding (AZ Clean Elections) is contribution_kind 'public_funds', also excluded and reported "
+         "as public_funds_total. Loans are reported separately as loans_total and self_loans_total (a candidate lending "
+         "to their own campaign), "
+         "available for MI, GA, AZ, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt)."),
         ("contribution-kind",
          "Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another "
          "committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, "

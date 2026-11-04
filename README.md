@@ -13,7 +13,8 @@ as a CLI. First subject: **James Talarico** (Texas).
 | Michigan | [MiTN all-transactions export](https://mi-boe.entellitrak.com/etk-mi-boe-prod/page.request.do?page=gov.mi.boe.component.cfrexport.page.cfrexportdownload) | All committees, by year since 1998 | done |
 | Pennsylvania | [DOS full export](https://www.pa.gov/agencies/dos/resources/voting-and-elections-resources/campaign-finance-data) | State/local filers, by year since 2000 | done |
 | Georgia | [PeachFile](https://efile.ethics.ga.gov/) bulk API | Filings from 2025 on (legacy 2017-2024 not covered) | done |
-| Next | AZ, WI, NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
+| Arizona | [See The Money](https://seethemoney.az.gov/) JSON endpoints, committee by committee | Per two-year cycle as synced (no bulk file) | done |
+| Next | WI, NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
 | Legislative | [Open States](https://docs.openstates.org/api-v3/) | Bills, votes | first-pass fetcher |
 
 ## Quick start
@@ -122,7 +123,7 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 
 - **itemized-only**: Totals are itemized contributions as filed. FEC small-dollar money (under $200 per donor per cycle) is not itemized and appears only in fec_totals; Georgia lump sums are typed 'unitemized'.
 - **clean-view**: Sum over contributions_clean (or contributions_as_of): they exclude memo rows (FEC sub-items) and rows that have been removed at the source.
-- **loans-excluded**: Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled (contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), available for MI, GA, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt).
+- **loans-excluded**: Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled (contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. Public campaign funding (AZ Clean Elections) is contribution_kind 'public_funds', also excluded and reported as public_funds_total. Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), available for MI, GA, AZ, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt).
 - **contribution-kind**: Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, return, and transfer; in_kind_total and returns_total are reported separately.
 - **returns-negative**: Returned contributions are negative amounts where the source reports them.
 - **in-state-share**: In-state share counts only rows with a known donor state; unitemized lump sums are left out.
@@ -265,6 +266,19 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Known gap:** Nothing before 2025: the 2025 election window (from Nov 2024) is only partly covered.
 - **Known gap:** Some prominent filers (e.g. Raffensperger, Bottoms) are absent from the bulk export; cause unknown.
 - **Known gap:** Leadership committees (e.g. WBJ Leadership Committee, Georgians First) register as non-candidate committees and are classified 'pac', not under the office of the official they are tied to.
+
+#### AZ: [Arizona Secretary of State (See The Money)](https://seethemoney.az.gov/)
+
+- **Covers:** Statewide and legislative candidates, PACs, party committees, and organizations filing with the Secretary of State.
+- **History from:** Per two-year cycle as synced (site data goes back to the 2000s)
+- **Refresh:** No bulk file: sync walks every recipient committee per cycle (resumable; refresh refetches only committees whose income changed). A first full cycle takes on the order of an hour.
+- **Excludes:** Federal candidates (use FEC); Local filers who file with a city or county; Independent expenditures and ballot-measure committees (not loaded yet)
+- **Rule:** Only income transactions (Page 20) load; expenses are not loaded yet.
+- **Rule:** Clean Elections public funding ('Receive CCEC Funding') is contribution_kind 'public_funds': reported, not counted as contributions. $5 qualifying contributions count as individual gifts; their hand-off to the CCEC fund is an other_receipt.
+- **Rule:** 'In-State Contributions $100 or Less' are lump sums with no donor: contributor_type 'unitemized'.
+- **Rule:** Income detail page = (entity list page + 1) * 10: 20 candidates, 30 PACs, 40 parties, 50 organizations.
+- **Rule:** Transactions are keyed by PublicTransactionId.
+- **Known gap:** Cycle-based: a cycle that has not been synced is not covered even if neighboring cycles are.
 <!-- END GENERATED: data-scope -->
 
 ## Adding a state

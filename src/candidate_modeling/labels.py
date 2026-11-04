@@ -81,8 +81,9 @@ def conduit_sql(name_expr: str) -> str:
 
 # ---------- contribution kind ----------
 
-KINDS = ("monetary", "in_kind", "return", "transfer", "loan", "other_receipt")
-EXCLUDED_KINDS = ("loan", "other_receipt")  # rule loans-excluded: not contributions
+KINDS = ("monetary", "in_kind", "return", "transfer", "loan", "public_funds", "other_receipt")
+EXCLUDED_KINDS = ("loan", "public_funds", "other_receipt")  # rule loans-excluded: not contributions
+COUNTED_SQL = "coalesce(contribution_kind, 'monetary') NOT IN (" + ", ".join(f"'{k}'" for k in EXCLUDED_KINDS) + ")"
 
 
 # ---------- self-funding ----------

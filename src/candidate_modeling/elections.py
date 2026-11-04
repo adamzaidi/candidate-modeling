@@ -142,6 +142,8 @@ def _metrics_sql(base: str, windows: dict[int, dict], checkpoints, home_state_sq
                               round(coalesce(sum(amount) FILTER (WHERE self_match(contributor_name, cand_last, cand_first)), 0), 2)
                                   AS self_loans_total
                        FROM w_all WHERE contribution_kind = 'loan' GROUP BY ALL),
+             pub AS (SELECT election_year{g_by_l}, round(sum(amount), 2) AS public_funds_total
+                     FROM w_all WHERE contribution_kind = 'public_funds' GROUP BY ALL),
              m AS (
         SELECT election_year, {g_sel}
                count(*) AS rows,
@@ -170,12 +172,13 @@ def _metrics_sql(base: str, windows: dict[int, dict], checkpoints, home_state_sq
                {cps},
                min(date) AS first_date, max(date) AS last_date
         FROM w GROUP BY election_year{g_by})
-        SELECT m.*, coalesce(loans.loans_total, 0) AS loans_total, coalesce(loans.self_loans_total, 0) AS self_loans_total
-        FROM m LEFT JOIN loans USING (election_year{g_by})
+        SELECT m.*, coalesce(loans.loans_total, 0) AS loans_total, coalesce(loans.self_loans_total, 0) AS self_loans_total,
+               coalesce(pub.public_funds_total, 0) AS public_funds_total
+        FROM m LEFT JOIN loans USING (election_year{g_by}) LEFT JOIN pub USING (election_year{g_by})
         ORDER BY election_year{g_by}"""
 
 
-_COUNTED = "coalesce(contribution_kind, 'monetary') NOT IN ('loan', 'other_receipt')"  # rule loans-excluded
+_COUNTED = labels.COUNTED_SQL  # rule loans-excluded
 
 
 def _in_window(base: str, w: dict) -> str:
