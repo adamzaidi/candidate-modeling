@@ -1,4 +1,5 @@
-data/            # all data is rebuilt from scripts (syncs, industry build); never commit it
+# all data is rebuilt from scripts (syncs, industry build); never commit it
+data/
 .venv/
 __pycache__/
 *.egg-info/

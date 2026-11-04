@@ -1,6 +1,6 @@
 # CLAUDE.md — candidate-modeling
 
-Private repo (`adamzaidi/candidate-modeling`) for modeling political candidates' finances, built up over
+Repo (`adamzaidi/candidate-modeling`) for modeling political candidates' finances, built up over
 time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (user scope, `cm serve`).
 
 ## Architecture

@@ -1,8 +1,10 @@
 # candidate-modeling
 
-Campaign-finance data for any US political candidate, pulled from official sources into one local
-database. Agents can query it directly through an MCP server, and the same operations are available
-as a CLI. First subject: **James Talarico** (Texas).
+A reproducible pipeline for public campaign-finance data: federal (FEC) and seven state disclosure systems
+normalized into one local database, with history tracking, election-window comparisons, BEA real-dollar and
+per-capita normalization, revision analysis of how early filings understate final totals, and NAICS industry
+coding of donors. The same tested functions are available as a CLI and as an MCP server for AI agents.
+The project is nonpartisan: it reports what was filed, with every rule and data gap documented.
 
 ## Reports
 
