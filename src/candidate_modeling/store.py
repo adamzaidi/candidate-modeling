@@ -45,13 +45,14 @@ CONTRIBUTION_COLUMNS = [
     ("occupation", "VARCHAR"),
     ("is_memo", "BOOLEAN"),
     ("cycle", "INTEGER"),
-    ("contribution_kind", "VARCHAR"),  # monetary | in_kind | return | transfer | loan | other_receipt
+    ("contribution_kind", "VARCHAR"),  # monetary | in_kind | return | transfer | loan | public_funds | other_receipt
+    ("filed_date", "DATE"),            # when the row became public (report filed/received); NULL if unknown
 ]
 COLUMN_NAMES = [c for c, _ in CONTRIBUTION_COLUMNS]
 KEY = ["source", "transaction_id", "candidate_slug"]
 # Derived labels are refreshed on every load but excluded from the change hash, so adding or improving a
 # label never makes rows look amended in the history.
-DERIVED = ["contribution_kind"]
+DERIVED = ["contribution_kind", "filed_date"]
 CONTENT = [c for c in COLUMN_NAMES if c not in KEY]
 HASHED = [c for c in CONTENT if c not in DERIVED]
 TRACKING = [("row_hash", "VARCHAR"), ("first_seen", "TIMESTAMP"), ("last_seen", "TIMESTAMP"),

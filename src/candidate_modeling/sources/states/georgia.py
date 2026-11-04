@@ -210,7 +210,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                (year(d) + year(d) % 2)::INTEGER,
                CASE WHEN transaction_type = 'Loan Received' THEN 'loan'
                     WHEN transaction_type = 'Return Contribution' THEN 'return'
-                    WHEN transaction_subtype = 'In-Kind Contribution' THEN 'in_kind' ELSE 'monetary' END
+                    WHEN transaction_subtype = 'In-Kind Contribution' THEN 'in_kind' ELSE 'monetary' END,
+               try_strptime(report_filed_date, '%m/%d/%Y')::DATE  -- filed_date: when this row became public
         FROM t
     """
     return sql, [*(ids or []), slug]

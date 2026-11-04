@@ -297,7 +297,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                     ELSE 'organization' END,
                city, upper(state), left(zip_code, 5), employer_s_name_specific_field, profession_job_title, false,
                (year(d) + year(d) % 2)::INTEGER,
-               {case_map("transction_type", KIND_MAP, "CASE WHEN amount < 0 THEN 'return' ELSE 'monetary' END")}
+               {case_map("transction_type", KIND_MAP, "CASE WHEN amount < 0 THEN 'return' ELSE 'monetary' END")},
+               NULL::DATE  -- filed_date: when this row became public
         FROM read_parquet({_tx_list()})
         WHERE {where}
         QUALIFY row_number() OVER (PARTITION BY txn_id ORDER BY date_occured) = 1  -- same row in two year folders

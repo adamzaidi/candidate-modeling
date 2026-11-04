@@ -266,7 +266,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                     WHEN donor_kind IN ('PERSON', 'INDIVIDUAL') THEN 'individual' ELSE 'organization' END,
                nullif(trim(donor_city), ''), {_state_code("donor_state")}, nullif(left(trim(donor_zip), 5), ''),
                NULL, nullif(trim(occupation), ''), false,
-               (year(d) + year(d) % 2)::INTEGER, {kind}
+               (year(d) + year(d) % 2)::INTEGER, {kind},
+               NULL::DATE  -- filed_date: when this row became public
         FROM read_parquet({_tx_list()})
         WHERE {where}
         QUALIFY row_number() OVER (PARTITION BY id ORDER BY date) = 1

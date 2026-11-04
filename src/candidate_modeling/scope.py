@@ -18,6 +18,12 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "elections. Observation time (`first_seen`, `valid_from`, `removed_at`, `as_of`) is when this database saw "
          "a version of a row; use it to ask what the filings said at a past moment. Observation history starts at "
          "each source's first load and never reaches back further."),
+        ("vintage-reconstruction",
+         "Every row carries filed_date (when its report became public) where the source records it: TX report "
+         "received date, PA report submitted date, GA report filed date. revision_analysis rebuilds the total known "
+         "on any past date from these, measures how much early totals understated the final (like BEA's advance vs "
+         "later estimates), and nowcasts windows still settling, with a leave-one-out backtest. MI, WI, AZ, and NC "
+         "have no filing dates, so they are excluded."),
         ("election-window",
          "For election comparisons a contribution belongs to election year Y if dated after the reference election "
          "day of Y-1 and on or before that of Y. This keeps odd-year elections separate from even-year ones."),

@@ -179,12 +179,13 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
     contrib_where = f"WHERE c.FilerID {flt}" if flt else ""
     sql = f"""
         WITH latest AS (   -- newest submission of each report period; drops superseded originals
-            SELECT arg_max(CampaignfinanceID, SubmittedDate) AS report_id, any_value(FILERNAME) AS filer_name
+            SELECT arg_max(CampaignfinanceID, SubmittedDate) AS report_id, any_value(FILERNAME) AS filer_name,
+                   max(SubmittedDate) AS submitted
             FROM read_parquet({_glob('filer')}) {filer_where}
             GROUP BY FILERID, EYEAR, CYCLE
         ),
         c AS (
-            SELECT c.*, l.filer_name FROM read_parquet({_glob('contrib')}) c
+            SELECT c.*, l.filer_name, l.submitted FROM read_parquet({_glob('contrib')}) c
             JOIN latest l ON c.CampaignFinanceID = l.report_id
             {contrib_where}
         ),
@@ -204,7 +205,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                nullif(trim(ENAME), ''), nullif(trim(OCCUPATION), ''), false,
                (coalesce(year(d), EYEAR::INTEGER) + coalesce(year(d), EYEAR::INTEGER) % 2)::INTEGER,
                CASE WHEN Section IN ('IIF', 'IIG') THEN 'in_kind'
-                    WHEN try_cast(amt AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END
+                    WHEN try_cast(amt AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END,
+               try_cast(submitted AS DATE)  -- filed_date: when this row became public
         FROM u WHERE try_cast(amt AS DOUBLE) <> 0
     """
     ids = list(ids) if ids is not None else []

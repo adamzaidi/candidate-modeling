@@ -137,6 +137,17 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
 
 
 @server.tool()
+def revision_analysis(state: str, years: list[int], stage: str = "general", group_by: str | None = None) -> dict:
+    """How much do early filings understate final totals? Rebuilds the election-window total as known N days
+    before/after election day from report filing dates (TX, PA, GA only), gives the share of the final known at each
+    lag and the revision to final for mature elections, nowcasts elections still settling (known today / historical
+    share at the same lag, with a min-max range), and backtests that nowcast leave-one-out. group_by='kind' splits
+    candidates / PACs / parties."""
+    from . import revisions
+    return revisions.revision_analysis(state, years, stage=stage, group_by=group_by)
+
+
+@server.tool()
 def describe_schema() -> dict:
     """Tables, columns, and caveats available to `query`. Call before writing SQL."""
     return query.describe_schema()

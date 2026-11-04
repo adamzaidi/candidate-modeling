@@ -299,7 +299,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                nullif(trim(TransactionCity), ''), upper(nullif(trim(TransactionState), '')),
                nullif(left(trim(TransactionZipCode), 5), ''),
                nullif(trim(TransactionEmployer), ''), nullif(trim(TransactionOccupation), ''), false,
-               (year(d) + year(d) % 2)::INTEGER, {_kind_sql()}
+               (year(d) + year(d) % 2)::INTEGER, {_kind_sql()},
+               NULL::DATE  -- filed_date: when this row became public
         FROM read_parquet({_tx_list()}, union_by_name=true)
         WHERE {where}
         QUALIFY row_number() OVER (PARTITION BY PublicTransactionId ORDER BY TransactionDate) = 1

@@ -21,7 +21,8 @@ def isolated(tmp_path, monkeypatch):
 # ---------- Texas fixture zip ----------
 
 TX_FILER_HEADER = ["recordType"] + texas.FILER_COLS + ["filerStreetCity"]
-TX_CONTRIB_HEADER = ["recordType", "formTypeCd", "schedFormTypeCd", "receivedDt"] + texas.CONTRIB_COLS + ["contributorJobTitle"]
+TX_CONTRIB_HEADER = list(dict.fromkeys(["recordType", "formTypeCd", "schedFormTypeCd", "receivedDt"]
+                                       + texas.CONTRIB_COLS + ["contributorJobTitle"]))
 
 
 def _csv_bytes(header, rows) -> bytes:

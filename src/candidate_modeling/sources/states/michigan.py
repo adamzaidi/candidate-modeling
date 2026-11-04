@@ -175,7 +175,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                (year(d) + year(d) % 2)::INTEGER,
                CASE WHEN contribtype ILIKE '%loan%' THEN 'loan'
                     WHEN contribtype ILIKE '%in-kind%' OR contribtype ILIKE '%in kind%' THEN 'in_kind'
-                    WHEN try_cast(replace(amount, ',', '') AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END
+                    WHEN try_cast(replace(amount, ',', '') AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END,
+               NULL::DATE  -- filed_date: when this row became public
         FROM read_parquet({parquet_list(p, PARQUET)})
         WHERE {where}
     """

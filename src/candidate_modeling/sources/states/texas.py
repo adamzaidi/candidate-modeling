@@ -34,7 +34,7 @@ FILER_COLS = ["filerIdent", "filerTypeCd", "filerName", "filerPersentTypeCd", "f
 SPAC_COLS = ["spacFilerIdent", "spacFilerTypeCd", "spacFilerName", "spacCommitteeStatusCd", "spacPositionCd",
              "candidateFilerIdent", "candidateFilerName", "candidateHoldOfficeCd", "candidateHoldOfficeDistrict",
              "candidateSeekOfficeCd", "candidateSeekOfficeDistrict"]
-CONTRIB_COLS = ["schedFormTypeCd", "reportInfoIdent", "infoOnlyFlag", "filerIdent", "filerTypeCd", "filerName", "contributionInfoId",
+CONTRIB_COLS = ["schedFormTypeCd", "receivedDt", "reportInfoIdent", "infoOnlyFlag", "filerIdent", "filerTypeCd", "filerName", "contributionInfoId",
                 "contributionDt", "contributionAmount", "contributorPersentTypeCd", "contributorNameOrganization",
                 "contributorNameLast", "contributorNameFirst", "contributorStreetCity", "contributorStreetStateCd",
                 "contributorStreetPostalCode", "contributorEmployer", "contributorOccupation"]
@@ -159,13 +159,16 @@ def covered_years() -> list[int]:
 IN_KIND_SCHEDULES = ("A2", "AJ2", "C2", "C4")  # CFS-Codes.txt: non-monetary (in-kind) contributions
 
 
-def _has_schedule() -> bool:
+def _parquet_cols() -> set[str]:
     _, parts = _dirs()
     first = next(iter(data_files(parts, CONTRIB_PARQUET)), None)
     if not first:
-        return False
-    cols = [r[0] for r in duckdb.connect().execute(f"DESCRIBE SELECT * FROM read_parquet({sql_str(first)})").fetchall()]
-    return "schedFormTypeCd" in cols
+        return set()
+    return {r[0] for r in duckdb.connect().execute(f"DESCRIBE SELECT * FROM read_parquet({sql_str(first)})").fetchall()}
+
+
+def _has_schedule() -> bool:
+    return "schedFormTypeCd" in _parquet_cols()
 
 
 def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tuple[str, list]:
@@ -174,6 +177,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
     kind = (f"CASE WHEN schedFormTypeCd IN ({', '.join(sql_str(x) for x in IN_KIND_SCHEDULES)}) THEN 'in_kind' "
             "WHEN try_cast(contributionAmount AS DOUBLE) < 0 THEN 'return' ELSE 'monetary' END"
             if _has_schedule() else "'monetary'")  # pre-0.4 parquet lacks the schedule column; re-sync to label
+    filed = ("try_strptime(receivedDt, '%Y%m%d')::DATE" if "receivedDt" in _parquet_cols()
+             else "NULL::DATE")  # report received date; older parquet lacks it until re-sync
     where, params = "coalesce(infoOnlyFlag, 'N') <> 'Y'", [slug]
     if ids is not None:
         where += f" AND filerIdent IN ({', '.join('?' for _ in ids)})"
@@ -188,7 +193,8 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
                CASE WHEN contributorPersentTypeCd = 'INDIVIDUAL' THEN 'individual' ELSE 'organization' END,
                contributorStreetCity, upper(contributorStreetStateCd), left(contributorStreetPostalCode, 5),
                contributorEmployer, contributorOccupation, false,
-               (year(d) + year(d) % 2)::INTEGER, {kind}
+               (year(d) + year(d) % 2)::INTEGER, {kind},
+               {filed}  -- filed_date: when this row became public
         FROM read_parquet({parquet_list(parts, CONTRIB_PARQUET)})
         WHERE {where}
     """
