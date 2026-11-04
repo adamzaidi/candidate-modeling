@@ -8,3 +8,4 @@ data/raw/
 data/processed/*
 !data/processed/.gitkeep
 data/*.duckdb*
+CLAUDE.local.md
