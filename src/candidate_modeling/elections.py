@@ -266,8 +266,12 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
         raise ValueError("Pass years and exactly one of state= or slugs=.")
     if slugs and (group_by or office or kind or party):
         raise ValueError("group_by/office/kind/party need state= (labels come from the state's committee registry).")
-    if group_by not in (None, "office", "kind", "party"):
-        raise ValueError("group_by must be 'office', 'kind', or 'party'.")
+    if group_by not in (None, "office", "kind", "party", "industry"):
+        raise ValueError("group_by must be 'office', 'kind', 'party', or 'industry'.")
+    if group_by == "industry":
+        from . import industry as _ind
+        if not _ind.out_path().exists():
+            raise ValueError("Industry codes not built; run `cm industry build`.")
     years = sorted(set(int(y) for y in years))
     today = today or _dt.date.today()
     notes: list[str] = []
@@ -281,11 +285,14 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
             raise ValueError(f"{state.upper()} is not synced; run sync_state('{state.upper()}').")
         cal_state, covered, home = m.STATE, m.covered_years(), f"'{m.STATE}'"
         sql, params = m.normalized_sql(None, None)
+        from . import industry as _ind
         base = (f"SELECT b.*, coalesce(c.kind, 'other_committee') AS kind, "
+                f"CASE WHEN b.contributor_type = 'individual' THEN coalesce(ic.code, 'unclassified') "
+                f"ELSE 'not_an_individual' END AS industry, "
                 f"coalesce(c.office_category, 'unknown') AS office_category, c.office_raw, "
                 f"coalesce(c.party, 'unknown') AS party, c.cand_last, c.cand_first, coalesce(c.is_conduit, false) AS is_conduit "
                 f"FROM ({_inline(sql, params)}) b({', '.join(store.COLUMN_NAMES)}) "
-                f"LEFT JOIN ({m.committees_sql()}) c USING (committee_id)")
+                f"LEFT JOIN ({m.committees_sql()}) c USING (committee_id) {_ind.industry_join_sql('b')}")
         filters = []
         if office:
             filters.append(f"office_category IN ({_in_list(office)})")
@@ -297,6 +304,9 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
             base = f"SELECT * FROM ({base}) f WHERE {' AND '.join(filters)}"
         notes.append("Statewide totals count committee-to-committee transfers at each hop (rule "
                      "statewide-double-count); individuals_total and total_excluding_conduits are cleaner comparisons.")
+        if group_by == "industry":
+            notes.append("Industry = donor's NAICS sector coded from employer/occupation (rule industry-coding); only "
+                         "individual donors are coded. See reference/industry_eval.json for measured accuracy.")
         if office or group_by == "office":
             notes.append("Office = each committee's latest office on file (rule office-snapshot).")
         subject = {"state": m.STATE, "source": m.SOURCE, "office": office, "kind": kind, "party": party}
@@ -372,7 +382,7 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
                                     "itemized-only"]}
 
         if group_by and windows:
-            col = {"office": "office_category", "kind": "kind", "party": "party"}[group_by]
+            col = {"office": "office_category", "kind": "kind", "party": "party", "industry": "industry"}[group_by]
             g = records(con.execute(_metrics_sql(base, windows, checkpoints, home, group=col)))
             cov_ok = {r["election_year"]: r["coverage"]["status"] == "complete" for r in out_rows if r.get("window")}
             groups: dict = {}

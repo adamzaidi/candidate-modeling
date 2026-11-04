@@ -1,11 +1,8 @@
+data/            # all data is rebuilt from scripts (syncs, industry build); never commit it
 .venv/
 __pycache__/
 *.egg-info/
 .env
 .ipynb_checkpoints/
 .DS_Store
-data/raw/
-data/processed/*
-!data/processed/.gitkeep
-data/*.duckdb*
 CLAUDE.local.md

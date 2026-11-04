@@ -10,6 +10,7 @@
   cm compare-elections 2025 2026 --state PA  # election windows side by side (or --slugs a b)
   cm compare-elections 2022 2026 --state TX --stage primary --group-by office
   cm compare-elections 2022 2026 --state TX --office governor
+  cm industry build | evaluate               # code donor industries; score on reference/industry_*.csv
   cm scope                                   # rules + what is covered on this machine
   cm docs                                    # regenerate README data-scope section
   cm compare talarico someone-else
@@ -50,10 +51,11 @@ def main(argv=None):
     g = s.add_mutually_exclusive_group(required=True); g.add_argument("--state"); g.add_argument("--slugs", nargs="+")
     s.add_argument("--stage", default="general",
                    choices=["general", "primary", "primary_runoff", "general_campaign", "general_runoff"])
-    s.add_argument("--group-by", choices=["office", "kind", "party"]); s.add_argument("--office", nargs="+")
+    s.add_argument("--group-by", choices=["office", "kind", "party", "industry"]); s.add_argument("--office", nargs="+")
     s.add_argument("--kind", nargs="+"); s.add_argument("--party", nargs="+")
     s = sub.add_parser("revisions"); s.add_argument("state"); s.add_argument("years", nargs="+", type=int)
     s.add_argument("--stage", default="general"); s.add_argument("--group-by", choices=["kind"])
+    s = sub.add_parser("industry"); s.add_argument("action", choices=["build", "evaluate"])
     sub.add_parser("scope")
     sub.add_parser("docs", help="regenerate the README data-scope section from scope.py")
     s = sub.add_parser("compare"); s.add_argument("slugs", nargs="+"); s.add_argument("--jurisdiction")
@@ -92,6 +94,9 @@ def main(argv=None):
     elif a.cmd == "revisions":
         from .revisions import revision_analysis
         _print(revision_analysis(a.state, a.years, stage=a.stage, group_by=a.group_by))
+    elif a.cmd == "industry":
+        from . import industry
+        _print(industry.build() if a.action == "build" else industry.write_evaluation())
     elif a.cmd == "scope":
         from .scope import data_scope
         _print(data_scope())

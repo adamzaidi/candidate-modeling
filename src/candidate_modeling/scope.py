@@ -106,6 +106,12 @@ RULES: dict[str, list[tuple[str, str]]] = {
          "have different offices on them, so statewide odd-versus-even comparisons measure different contests."),
     ],
     "offices": [
+        ("industry-coding",
+         "Individual donors' employer/occupation text is coded to a NAICS 2022 sector (or retired, not employed, "
+         "student, homemaker, self-employed, unknown) by rules plus a text classifier trained on rule-coded pairs; "
+         "predictions under 0.6 confidence stay 'unclassified' instead of being guessed. Accuracy is measured on a "
+         "held-out sample labeled blind to predictions and recorded in reference/industry_eval.json; cite that file, "
+         "never a remembered number. Labels need human review."),
         ("office-taxonomy",
          "Offices are normalized into shared categories (see OFFICE_CATEGORIES). Raw labels are always kept as "
          "office_raw; unmapped codes become 'unknown' rather than being guessed."),

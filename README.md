@@ -153,6 +153,7 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 
 ### Offices
 
+- **industry-coding**: Individual donors' employer/occupation text is coded to a NAICS 2022 sector (or retired, not employed, student, homemaker, self-employed, unknown) by rules plus a text classifier trained on rule-coded pairs; predictions under 0.6 confidence stay 'unclassified' instead of being guessed. Accuracy is measured on a held-out sample labeled blind to predictions and recorded in reference/industry_eval.json; cite that file, never a remembered number. Labels need human review.
 - **office-taxonomy**: Offices are normalized into shared categories (see OFFICE_CATEGORIES). Raw labels are always kept as office_raw; unmapped codes become 'unknown' rather than being guessed.
 - **office-snapshot**: A committee's office is its latest office on file, not necessarily the office it was raising for in an earlier window. A candidate who switched races carries the new office back in time.
 - **linked-committees**: Some states route a candidate's money through a separate committee. Texas specific-purpose committees that the TEC SPAC index links to exactly one candidate (SUPPORT/ASSIST) count as that candidate's committee and take their office (e.g. Texans for Greg Abbott -> governor). Committees that oppose, or back several candidates, stay 'pac'.

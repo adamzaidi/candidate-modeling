@@ -1,0 +1,279 @@
+{
+  "generated": "2026-11-04T22:41:57+00:00",
+  "coverage_all_synced_data": {
+    "share_of_gifts_coded": 0.662,
+    "share_of_pairs_coded": 0.664
+  },
+  "note_on_dollars": "Coverage by dollars is lower than by gifts (large donors often list holding companies or executive titles); use compare_elections(group_by='industry') for the dollar view.",
+  "build": {
+    "built": "2026-11-04T19:31:43+00:00",
+    "pairs": 1905198,
+    "training_pairs": 934458,
+    "confidence_threshold": 0.6,
+    "by_method": [
+      {
+        "method": "rule",
+        "pairs": 999179,
+        "gifts": 40988896
+      },
+      {
+        "method": "model_low_confidence",
+        "pairs": 639149,
+        "gifts": 5746603
+      },
+      {
+        "method": "model",
+        "pairs": 266870,
+        "gifts": 2465748
+      }
+    ]
+  },
+  "development": {
+    "n": 200,
+    "accuracy_all": 0.96,
+    "accuracy_when_coded": 0.96,
+    "coverage": 0.885,
+    "per_label": {
+      "21": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "22": {
+        "precision": 0.875,
+        "recall": 1.0,
+        "support": 14
+      },
+      "23": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "support": 5
+      },
+      "31-33": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 20
+      },
+      "42": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 3
+      },
+      "44-45": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "48-49": {
+        "precision": 1.0,
+        "recall": 0.941,
+        "support": 17
+      },
+      "51": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 8
+      },
+      "52": {
+        "precision": 0.952,
+        "recall": 1.0,
+        "support": 20
+      },
+      "53": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "54": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 10
+      },
+      "56": {
+        "precision": 0.667,
+        "recall": 1.0,
+        "support": 2
+      },
+      "61": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 12
+      },
+      "62": {
+        "precision": 0.917,
+        "recall": 0.917,
+        "support": 12
+      },
+      "71": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 3
+      },
+      "72": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "81": {
+        "precision": 0.667,
+        "recall": 1.0,
+        "support": 2
+      },
+      "92": {
+        "precision": 0.929,
+        "recall": 1.0,
+        "support": 13
+      },
+      "not_employed": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "retired": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 6
+      },
+      "self_employed": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 3
+      },
+      "unclassified": {
+        "precision": 0.957,
+        "recall": 0.815,
+        "support": 27
+      },
+      "unknown": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      }
+    },
+    "labeled_by": [
+      "claude (needs human review)"
+    ]
+  },
+  "held_out_test": {
+    "n": 150,
+    "accuracy_all": 0.773,
+    "accuracy_when_coded": 0.9,
+    "coverage": 0.8,
+    "per_label": {
+      "21": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 8
+      },
+      "22": {
+        "precision": 0.875,
+        "recall": 0.583,
+        "support": 12
+      },
+      "23": {
+        "precision": 1.0,
+        "recall": 0.75,
+        "support": 4
+      },
+      "31-33": {
+        "precision": 1.0,
+        "recall": 0.789,
+        "support": 19
+      },
+      "42": {
+        "precision": null,
+        "recall": 0.0,
+        "support": 1
+      },
+      "44-45": {
+        "precision": 0.667,
+        "recall": 0.4,
+        "support": 5
+      },
+      "48-49": {
+        "precision": 0.889,
+        "recall": 0.889,
+        "support": 9
+      },
+      "51": {
+        "precision": 0.6,
+        "recall": 0.75,
+        "support": 8
+      },
+      "52": {
+        "precision": 1.0,
+        "recall": 0.824,
+        "support": 17
+      },
+      "53": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 1
+      },
+      "54": {
+        "precision": 0.941,
+        "recall": 0.762,
+        "support": 21
+      },
+      "56": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "61": {
+        "precision": 0.909,
+        "recall": 0.909,
+        "support": 11
+      },
+      "62": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "71": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "support": 2
+      },
+      "72": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "92": {
+        "precision": 0.6,
+        "recall": 1.0,
+        "support": 3
+      },
+      "not_employed": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "retired": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "self_employed": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "unclassified": {
+        "precision": 0.267,
+        "recall": 0.615,
+        "support": 13
+      },
+      "unknown": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 1
+      }
+    },
+    "labeled_by": [
+      "claude, blind to predictions (needs human review)"
+    ]
+  },
+  "caveat": "Labels were assigned by Claude (test set blind to predictions) and need human review; the development score is optimistic because rules were fixed from its errors."
+}
