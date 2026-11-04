@@ -159,3 +159,40 @@ def revision_analysis(state: str, years: list[int], stage: str = "general", lags
                 "confidence interval.",
             ],
             "rules_applied": ["vintage-reconstruction", "election-window", "stage-window", "loans-excluded"]}
+
+
+def known_curve(state: str, year: int, stage: str = "general", start_day: int = -60, end_day: int = 180,
+                today: _dt.date | None = None) -> list[dict]:
+    """Daily vintage curve: share of the final (today's) window total that was public by each day relative to
+    election day. Days after `today` are omitted (no vintage exists yet)."""
+    st = state.upper()
+    if st not in FILED_SOURCES:
+        raise ValueError(f"{st} has no filing dates in its data.")
+    m = states.get(st)
+    today = today or _dt.date.today()
+    w = stage_window(year, stage, st)
+    if not w:
+        return []
+    e = w["end"]
+    last = min(e + _dt.timedelta(days=end_day), today)
+    con = duckdb.connect()
+    labels.install_macros(con)
+    try:
+        rows = con.execute(f"""
+            WITH base AS ({_base(m)}),
+                 win AS (SELECT amount, filed_date FROM base
+                         WHERE date > DATE '{w['start_exclusive']}' AND date <= DATE '{e}'),
+                 tot AS (SELECT sum(amount) AS t FROM win),
+                 days AS (SELECT unnest(generate_series(DATE '{e + _dt.timedelta(days=start_day)}',
+                                                        DATE '{last}', INTERVAL 1 DAY))::DATE AS d),
+                 daily AS (SELECT filed_date AS d, sum(amount) AS a FROM win WHERE filed_date IS NOT NULL GROUP BY 1),
+                 before AS (SELECT coalesce(sum(amount), 0) AS b FROM win
+                            WHERE filed_date < DATE '{e + _dt.timedelta(days=start_day)}')
+            SELECT days.d, (days.d - DATE '{e}') AS day,
+                   ((SELECT b FROM before) + coalesce(sum(daily.a) OVER (ORDER BY days.d), 0)) / (SELECT t FROM tot)
+                       AS share_known
+            FROM days LEFT JOIN daily USING (d) ORDER BY days.d""").fetchall()
+    finally:
+        con.close()
+    return [{"date": d.isoformat(), "day": int(day), "share_known": round(s, 5) if s is not None else None}
+            for d, day, s in rows]

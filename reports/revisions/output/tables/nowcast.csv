@@ -1,0 +1,3 @@
+state,election_year,lag_days,known_today_usd,nowcast_final_usd,range_low_usd,range_high_usd,reference_years,mean_share_known_at_lag
+TX,2026,0,765151763.11,844678217.27,844351978.71,845004708.02,2022 2024,0.9059
+PA,2026,0,509248016.53,605850950.6,586691263.28,626304287.95,2022 2024,0.8406

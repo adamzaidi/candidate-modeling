@@ -4,6 +4,13 @@ Campaign-finance data for any US political candidate, pulled from official sourc
 database. Agents can query it directly through an MCP server, and the same operations are available
 as a CLI. First subject: **James Talarico** (Texas).
 
+## Reports
+
+- **[How much do early filings understate final campaign totals?](reports/revisions/output/report.md)**:
+  revision analysis and nowcasting for Texas and Pennsylvania (2022-2026), with BEA real-dollar and
+  per-resident comparisons. Built entirely by [`reports/revisions/build.py`](reports/revisions/build.py):
+  every number comes from the generated tables, and `manifest.json` records data vintages and rules.
+
 ## Coverage
 
 | Level | Source | What | Status |

@@ -1,0 +1,7 @@
+state,election_year,nominal_usd,real_usd,real_base_year,real_per_resident_usd,per_100k_personal_income_usd,income_year,pce_basis,coverage
+TX,2022,158537646.5,173331428.45,2025,5.7551,8.2527,2022,annual,complete
+TX,2026,129997721.95,126182418.81,2025,3.9793,5.604,2025,partial (3 quarters),complete
+PA,2022,91096939.63,99597559.45,2025,7.6704,10.7539,2022,annual,complete
+PA,2026,52427891.4,50889185.22,2025,3.8967,5.3265,2025,partial (3 quarters),complete
+MI,2022,31926897.2,34906123.69,2025,3.4754,5.4727,2022,annual,complete
+MI,2026,24355245.44,23640443.34,2025,2.3342,3.5761,2025,partial (3 quarters),complete

@@ -79,3 +79,11 @@ def test_never_extrapolates_across_election_kinds(tx_vintages):
     assert r["nowcasts"][0]["nowcast_final"] is not None             # 2022 is even: comparable
     r2 = revisions.revision_analysis("TX", [2026], lags=(0, 14), today=TODAY)
     assert r2["nowcasts"][0]["nowcast_final"] is None and "same kind" in r2["nowcasts"][0]["reason"]
+
+
+def test_known_curve_is_daily_cumulative(tx_vintages):
+    from candidate_modeling.revisions import known_curve
+    c = {p["day"]: p["share_known"] for p in known_curve("TX", 2022, start_day=-15, end_day=120, today=TODAY)}
+    assert c[-15] == 0.0 and c[-10] == 0.5 and c[0] == 0.5 and c[20] == 0.75 and c[100] == 1.0
+    assert min(c) == -15 and max(c) == 120
+    assert all(c[d] <= c[d + 1] for d in range(-15, 120))           # never decreases

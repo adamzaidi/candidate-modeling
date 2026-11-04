@@ -1,0 +1,133 @@
+{
+  "generated": "2026-11-04",
+  "code_commit": "7355e2b",
+  "vintages": {
+    "bea": {
+      "regional_vintage": "Wed, 30 Sep 2026 12:51:42 GMT",
+      "nipa_annual_vintage": "Wed, 04 Nov 2026 14:23:04 GMT",
+      "nipa_quarterly_vintage": "Wed, 04 Nov 2026 14:23:04 GMT",
+      "income_rows": 5044,
+      "pce_years": [
+        1929,
+        2026
+      ],
+      "income_latest_year": 2025
+    },
+    "MI": {
+      "covered_years": [
+        2021,
+        2022,
+        2024,
+        2025,
+        2026
+      ],
+      "manifest": {
+        "contribution_2026": "Nov 3, 2026, 3:20:00 AM",
+        "contribution_2024": "Nov 3, 2026, 3:20:00 AM",
+        "contribution_2025": "Oct 31, 2026, 3:20:00 AM",
+        "contribution_2021": "Oct 9, 2026, 3:16:00 AM",
+        "contribution_2022": "Oct 9, 2026, 3:17:00 AM"
+      }
+    },
+    "PA": {
+      "covered_years": [
+        2021,
+        2022,
+        2024,
+        2025,
+        2026
+      ],
+      "manifest": {
+        "2026": "Fri, 30 Oct 2026 18:02:41 GMT",
+        "2024": "Tue, 14 Oct 2025 15:42:13 GMT",
+        "2025": "Wed, 20 May 2026 19:06:14 GMT",
+        "2021": "Tue, 14 Oct 2025 17:06:46 GMT",
+        "2022": "Tue, 14 Oct 2025 18:14:11 GMT"
+      }
+    },
+    "TX": {
+      "covered_years": [
+        2001,
+        2002,
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026
+      ],
+      "manifest": {
+        "zip_last_modified": "Wed, 04 Nov 2026 11:35:03 GMT",
+        "parquet_built_from": "Wed, 04 Nov 2026 11:35:03 GMT"
+      }
+    }
+  },
+  "rules_applied": {
+    "align-by-days": "Align elections by days before election day and compare cumulative money at the same checkpoints (300, 180, 90, 30, 7, 0 days out), especially when one election is still in progress.",
+    "bea-normalization": "When BEA data is synced (sync_state('BEA')), compare_elections adds a bea block: real dollars via the PCE price index (DPCERG, rebased to the latest full year), per capita (state population), and dollars per $100k of state personal income (SAINC1). A year without published data uses the latest available year or a partial-quarter price average, and says so (income_year_is_latest_available, pce_basis). BEA revises these series; the file vintages are included in every result.",
+    "clean-view": "Sum over contributions_clean (or contributions_as_of): they exclude memo rows (FEC sub-items) and rows that have been removed at the source.",
+    "conduits": "Conduits (ActBlue, WinRed, and similar) forward earmarked gifts that candidates also itemize. Committees flagged is_conduit (e.g. ActBlue Texas) are reported as conduit_recipient_total; total_excluding_conduits removes them. Gifts whose donor is a conduit are reported as from_conduit_total.",
+    "contribution-kind": "Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, return, and transfer; in_kind_total and returns_total are reported separately.",
+    "coverage-first": "Only compare windows that both sources cover completely. compare_elections reports coverage per year and marks partial windows; never present a partial window as a decline.",
+    "election-window": "For election comparisons a contribution belongs to election year Y if dated after the reference election day of Y-1 and on or before that of Y. This keeps odd-year elections separate from even-year ones.",
+    "itemized-only": "Totals are itemized contributions as filed. FEC small-dollar money (under $200 per donor per cycle) is not itemized and appears only in fec_totals; Georgia lump sums are typed 'unitemized'.",
+    "loans-excluded": "Loans, loan payments, interest, and other non-contribution receipts are not contributions. They are labeled (contribution_kind 'loan' / 'other_receipt') where the source includes them, and excluded from every total. Public campaign funding (AZ Clean Elections) is contribution_kind 'public_funds', also excluded and reported as public_funds_total. Loans are reported separately as loans_total and self_loans_total (a candidate lending to their own campaign), available for MI, GA, AZ, and FEC; TX and PA loans live in files not loaded yet (roadmap cash-and-debt).",
+    "reporting-lag": "Filings trail the calendar. Near and just after election day the latest window is incomplete (the final reports are not filed yet), so its late checkpoints undercount; compare_elections flags this as reporting_incomplete.",
+    "self-funding": "A candidate's money to their own campaign is usually typed 'individual' (e.g. $200M from Richard Jackson to Jackson for Governor in GA, 2026). self_funding_total flags individual gifts whose donor name matches the candidate (surname as a word plus the first 4 letters of the first name). Nicknames on one side only are missed, so treat it as a floor and check top_donors and pct_from_top_donor too.",
+    "stage-window": "Stages split the year: primary = after last year's general through the primary; primary_runoff = after the primary through the runoff; general_campaign = after the last primary/runoff through the general; general_runoff = after the general through its runoff. Primary and runoff dates come only from reference/elections.yaml, where every date has a source; a year with no entry reports no_election.",
+    "vintage-reconstruction": "Every row carries filed_date (when its report became public) where the source records it: TX report received date, PA report submitted date, GA report filed date. revision_analysis rebuilds the total known on any past date from these, measures how much early totals understated the final (like BEA's advance vs later estimates), and nowcasts windows still settling, with a leave-one-out backtest. MI, WI, AZ, and NC have no filing dates, so they are excluded."
+  },
+  "figures": {
+    "fig1": {
+      "path": "fig1_share_known_by_day.png",
+      "ylim": [
+        [
+          0.0,
+          1.02
+        ],
+        [
+          0.0,
+          1.02
+        ]
+      ]
+    },
+    "fig2": {
+      "path": "fig2_nowcast_2026.png",
+      "xlim": [
+        0.0,
+        1098.506120426
+      ]
+    },
+    "fig3": {
+      "path": "fig3_governor_real_per_resident.png",
+      "ylim": [
+        0.0,
+        9.20448
+      ]
+    }
+  },
+  "tables": {
+    "shares": 36,
+    "nowcast": 2,
+    "backtest": 18,
+    "governor": 6
+  }
+}
