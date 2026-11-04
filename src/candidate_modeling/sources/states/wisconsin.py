@@ -48,8 +48,10 @@ SCOPE = {
                "count changes (~10 minutes per year).",
     "rules": [
         "Only transactionType 1 (Contribution) loads; conduit release records (type 3) are not double counted.",
-        "contribution_kind comes from category flags: loans (commercial/personal), in-kind, returned "
-        "contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).",
+        "contribution_kind comes from the category id (rows carry no category code): loans (commercial/personal), "
+        "in-kind, returned contributions, other income and forgiven obligations (other_receipt), redirected "
+        "(other_receipt).",
+        "Donors with entityTypeOf PERSON are individuals; ANONYMOUS donors (small anonymous gifts) are unitemized.",
         "Recipients are the filing committee (createdByEntity); committee type and party come from its registration.",
         "The API uses superjson: the paging cursor's date must be sent with meta {values: {cursor.date: [Date]}}.",
     ],
@@ -60,13 +62,16 @@ SCOPE = {
     ],
 }
 
-# category code -> contribution_kind (codes from transactionMeta.getTransactionCategories, transactionTypeId 1)
+# category ID -> contribution_kind. Transaction rows carry only the category id and label (no code), so map by id
+# (ids/codes from transactionMeta.getTransactionCategories, transactionTypeId 1):
+#   loans: 2 CL, 12 PL, 18 RCPL, 24 RCTPL | in-kind: 5 IK, 16 RCIK, 22 RCTIK | return: 25 RDC
+#   other_receipt: 3 ER, 10 OI, 15 RCEF, 21 RCTEF, 4 IIEF, 6 IOF, 7 LF, 154 RDRCT (redirected)
 CATEGORY_KIND = {
-    "CL": "loan", "PL": "loan", "RCPL": "loan", "RCTPL": "loan",
-    "IK": "in_kind", "RCIK": "in_kind", "RCTIK": "in_kind",
-    "RDC": "return",
-    "ER": "other_receipt", "OI": "other_receipt", "RCEF": "other_receipt", "RCTEF": "other_receipt",
-    "IIEF": "other_receipt", "IOF": "other_receipt", "LF": "other_receipt", "RDRCT": "other_receipt",
+    "2": "loan", "12": "loan", "18": "loan", "24": "loan",
+    "5": "in_kind", "16": "in_kind", "22": "in_kind",
+    "25": "return",
+    "3": "other_receipt", "10": "other_receipt", "15": "other_receipt", "21": "other_receipt",
+    "4": "other_receipt", "6": "other_receipt", "7": "other_receipt", "154": "other_receipt",
 }
 COMMITTEE_KIND = {
     "State Candidate": "candidate", "Recall": "candidate", "PAC": "pac", "Independent Expenditure Committee": "pac",
@@ -262,11 +267,13 @@ def normalized_sql(ids: list[str] | None = None, slug: str | None = None) -> tup
     if ids is not None:
         where = f"recipient_id IN ({', '.join('?' for _ in ids)})"
         params += [str(i) for i in ids]
-    kind = case_map("category_code", CATEGORY_KIND, "CASE WHEN amount < 0 THEN 'return' ELSE 'monetary' END")
+    kind = case_map("category_id", CATEGORY_KIND, "CASE WHEN amount < 0 THEN 'return' ELSE 'monetary' END")
     sql = f"""
         SELECT ? AS candidate_slug, '{SOURCE}', '{STATE}', recipient_id, recipient_name, id,
-               date AS d, amount, nullif(trim(donor_name), ''),
-               CASE WHEN donor_kind = 'INDIVIDUAL' THEN 'individual' ELSE 'organization' END,
+               date AS d, amount,
+               CASE WHEN donor_kind IN ('ANONYMOUS') OR donor_type = 'Unitemized' THEN NULL ELSE nullif(trim(donor_name), '') END,
+               CASE WHEN donor_kind IN ('ANONYMOUS') OR donor_type = 'Unitemized' THEN 'unitemized'
+                    WHEN donor_kind IN ('PERSON', 'INDIVIDUAL') THEN 'individual' ELSE 'organization' END,
                nullif(trim(donor_city), ''), {_state_code("donor_state")}, nullif(left(trim(donor_zip), 5), ''),
                NULL, nullif(trim(occupation), ''), false,
                (year(d) + year(d) % 2)::INTEGER, {kind}

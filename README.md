@@ -288,7 +288,8 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Refresh:** Statewide API, one calendar year at a time; a year is re-downloaded only when its contribution count changes (~10 minutes per year).
 - **Excludes:** Federal candidates (use FEC); Local candidates and referenda (filed with local clerks)
 - **Rule:** Only transactionType 1 (Contribution) loads; conduit release records (type 3) are not double counted.
-- **Rule:** contribution_kind comes from category flags: loans (commercial/personal), in-kind, returned contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).
+- **Rule:** contribution_kind comes from the category id (rows carry no category code): loans (commercial/personal), in-kind, returned contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).
+- **Rule:** Donors with entityTypeOf PERSON are individuals; ANONYMOUS donors (small anonymous gifts) are unitemized.
 - **Rule:** Recipients are the filing committee (createdByEntity); committee type and party come from its registration.
 - **Rule:** The API uses superjson: the paging cursor's date must be sent with meta {values: {cursor.date: [Date]}}.
 - **Known gap:** No office for candidate committees (not exposed by the public API), so office breakdowns are unavailable.

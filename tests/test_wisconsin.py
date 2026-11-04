@@ -10,7 +10,7 @@ from candidate_modeling import elections, pipeline, store
 from candidate_modeling.sources.states import wisconsin as wi
 
 
-def ent(eid, name, kind="INDIVIDUAL", etype="Individual", state="WI", committee=None):
+def ent(eid, name, kind="PERSON", etype="Individual", state="WI", committee=None):  # real API: PERSON
     e = {"id": eid, "name": name, "entityType": {"id": 1, "name": etype, "entityTypeOf": kind},
          "entityContactProfiles": [{"city": "Madison", "state": state, "zip": "53703-1111", "isPrimary": True}]}
     if committee:
@@ -25,15 +25,21 @@ CONDUIT = ent(500, "Republicans of WI Conduit", "COMMITTEE", "Registrant",
               committee={"assignedCommitteeId": "0800001", "committeeType": {"name": "Conduit"}})
 
 
+CAT = {"MOC": (9, "Monetary"), "IK": (5, "In-Kind"), "PL": (12, "Personal Loan"), "RDC": (25, "Returned Contribution"),
+       "OI": (10, "Other Income")}
+
+
 def t(i, amount, code="MOC", date="2026-03-01", donor=None, rec=MARKLEIN):
     return {"id": i, "date": f"{date}T00:00:00.000Z", "amount": amount, "createdByEntity": rec,
             "createdByEntityId": rec["id"], "from_entity": donor or ent(9000 + i, f"Donor {i}"),
-            "transactionCategory": {"id": 9, "code": code, "label": code}, "fromOccupationTitle": "Teacher"}
+            "transactionCategory": {"id": CAT[code][0], "label": CAT[code][1]},  # real rows: no "code" field
+            "fromOccupationTitle": "Teacher"}
 
 
 ROWS = {2026: [t(i, 10.0) for i in range(1, 1501)]                              # spans two 1000-row pages
         + [t(2001, 500.0, "IK"), t(2002, 9000.0, "PL"), t(2003, -25.0, "RDC"), t(2004, 40.0, "OI"),
-           t(2005, 75.0, donor=ent(8000, "Out Of Stater", state="Illinois")), t(2006, 60.0, rec=CONDUIT)],
+           t(2005, 75.0, donor=ent(8000, "Out Of Stater", state="Illinois")), t(2006, 60.0, rec=CONDUIT),
+           t(2007, 5.0, donor=ent(8001, "Anonymous", kind="ANONYMOUS", etype="Anonymous"))],
         2025: [t(3001, 20.0, date="2025-06-01")]}
 CALLS = {"tx": 0}
 
@@ -69,7 +75,7 @@ def wi_api():
 def test_sync_pages_by_cursor_and_skips_unchanged(wi_api):
     out = wi.sync(years=[2025, 2026, 2007])
     st = {y["year"]: y for y in out["years"]}
-    assert st[2026] == {"year": 2026, "status": "updated", "rows": 1506, "expected": 1506}
+    assert st[2026] == {"year": 2026, "status": "updated", "rows": 1507, "expected": 1507}
     assert st[2007]["status"].startswith("not covered")
     assert wi.synced_years() == [2025, 2026]
     n = CALLS["tx"]
@@ -92,7 +98,7 @@ def test_interrupted_year_resumes_from_checkpoint(wi_api, monkeypatch):
         wi.sync(years=[2026])
     assert wi.synced_years() == []                                  # partial year is never readable
     out = wi.sync(years=[2026])["years"][0]
-    assert out["rows"] == 1506 and calls["n"] == 3                  # resumed at page 2, not page 1
+    assert out["rows"] == 1507 and calls["n"] == 3                  # resumed at page 2, not page 1
 
 
 def test_kinds_state_codes_and_totals(wi_api):
@@ -104,8 +110,11 @@ def test_kinds_state_codes_and_totals(wi_api):
         assert (kinds["2001"], kinds["2002"], kinds["2003"], kinds["2004"], kinds["1"]) == \
             ("in_kind", "loan", "return", "other_receipt", "monetary")
         assert con.execute("SELECT state FROM contributions WHERE transaction_id = '2005'").fetchone()[0] == "IL"
+        assert con.execute("SELECT contributor_type, contributor_name FROM contributions WHERE transaction_id = '2007'"
+                           ).fetchone() == ("unitemized", None)
+        assert con.execute("SELECT count(*) FROM contributions WHERE contributor_type = 'individual'").fetchone()[0] == 1505
         clean = con.execute("SELECT sum(amount) FROM contributions_clean").fetchone()[0]
-    assert clean == 1500 * 10 + 500 - 25 + 75                       # loan and other income excluded
+    assert clean == 1500 * 10 + 500 - 25 + 75 + 5                   # loan and other income excluded
     s = pipeline.finance_summary("marklein")
     assert s["labels"]["loans"]["loans_total"] == 9000.0
 
