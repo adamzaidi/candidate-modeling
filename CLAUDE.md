@@ -63,6 +63,19 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Never glob data files: iCloud creates `name 2.parquet` conflict copies. Use `_common.parquet_list`/`data_files`.
 - Labels (labels.py): party, self_match macro (surname word + first 4 letters), contribution_kind (DERIVED, not
   hashed; bump store.HASH_VERSION if the hashed set changes), conduits. Loans are labeled, never counted.
+- AZ (IN PROGRESS, not built): seethemoney.az.gov has NO bulk download; it's one committee at a time.
+  POST /Reporting/GetNEWTableData/?Page=N&startYear=2025&endYear=2026&JurisdictionId=0&TablePage=1&TableLength=100
+  &IsLessActive=false&ShowOfficeHolder=false&ChartName=N lists entities (DataTables body: draw, start, length; the
+  order[0][column], order[0][dir], columns[0][data]=EntityLastName params are REQUIRED or it returns ""; max 100/page).
+  Pages: 1 candidates (370 in 2025-26), 2 PACs (1162), 3 parties (90), 4 organizations (28), 5 IE, 6 ballot
+  measures, 7 individual donors, 8 vendors. Per-committee income: POST /Reporting/GetNEWDetailedTableData/?Page=20
+  &...&Name={listpage}~{EntityID}&entityId={EntityID} (1000/page OK), with fields PublicTransactionId,
+  TransactionDate (/Date(ms)/), Amount, TransactionType, TransactionGroupName, TransactionCity/State/ZipCode,
+  TransactionEmployer/Occupation, CandidateFirst/LastName, CandidateOfficeId. A statewide query without entityId
+  returns 0, so a statewide sync is ~1,650 committees per cycle (~20 min, polite, refetch only when Income changed).
+  Clean Elections public funding and "$5 qualifying contributions" need their own contribution_kind. The
+  ExportEntityTransactions CSV is UTF-16 with only 4 columns, so use the JSON endpoint. Next step: list the
+  transaction types on a big committee, then write sources/states/arizona.py.
 - Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
   against an independent parse first.
 
