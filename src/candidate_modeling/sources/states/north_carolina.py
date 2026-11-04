@@ -50,7 +50,10 @@ SCOPE = {
     "rules": [
         "Only receipts load: the export's expenditure types are cleared before each request.",
         "'Aggregated Individual Contribution' rows are lump sums: contributor_type 'unitemized'.",
-        "Party comes from the SBoE party filter (DEM/REP); other committees are not_applicable or unknown.",
+        "Party comes from the SBoE party filter (DEM/REP), applied only to candidate and party committees and only "
+        "when a committee appears under exactly one party (PACs appear under both, so the filter is not a "
+        "registration field). NC DEC / NC REC are the state party executive committees.",
+        "In-kind ('Nonmonetary Gift') is filed under expenditure code NMG, so that one code is kept in the export.",
         "Candidate committees are recognized by the '(LAST, FIRST)' suffix SBoE adds to their names.",
     ],
     "known_gaps": [
@@ -102,7 +105,8 @@ def export(start: date, end: date, party: str | None = None, retries: int = 2) -
             if not m:
                 raise RuntimeError("NC: results page has no search params")
             params = json.loads(html.unescape(m.group(1)))
-            params["ExpenditureType"] = ""  # receipts only (otherwise expenditures are exported too)
+            # receipts only, but keep NMG: SBoE files in-kind ("Nonmonetary Gift") under an expenditure code
+            params["ExpenditureType"] = "'NMG '"
             if party:
                 params["PartyType"] = f"'{party}'"
             e = s.post(f"{BASE}/CFTxnLkup/Export", timeout=900,
@@ -198,7 +202,7 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
             shutil.rmtree(work, ignore_errors=True)
             ym.update({"months_done": [], "rows": 0, "complete": False})
         work.mkdir(exist_ok=True)
-        party: dict[str, str] = ym.get("party", {})
+        party: dict[str, list[str]] = {k: (v if isinstance(v, list) else [v]) for k, v in ym.get("party", {}).items()}
         for start, end in _months(y):
             key = start.strftime("%m")
             if key in ym["months_done"]:
@@ -208,8 +212,9 @@ def sync(years: list[int] | None = None, force: bool = False) -> dict:
                 _write(rows, work / f"month_{key}.parquet")
             for code, label in PARTY_CODES.items():
                 for r in export(start, end, party=code):
-                    if r.get("Committee SBoE ID"):
-                        party[r["Committee SBoE ID"].strip()] = label
+                    cid = (r.get("Committee SBoE ID") or "").strip()
+                    if cid and label not in party.setdefault(cid, []):
+                        party[cid].append(label)
             ym["months_done"].append(key)
             ym["rows"] += len(rows)
             ym["party"] = party
@@ -253,13 +258,16 @@ def _tx_list() -> str:
 
 
 def _party_rows() -> list[tuple[str, str]]:
+    """Committee -> party, only when a committee appeared under exactly one party filter. The SBoE party filter
+    does not select by the committee's own registration (PACs appear under both), so ambiguity -> no label."""
     _, p = _dirs()
-    rows = {}
+    seen: dict[str, set] = {}
     for ydir in data_files(p, r"tx_\d{4}"):
         f = ydir / "party.json"
         if f.exists():
-            rows.update(json.loads(f.read_text()))
-    return list(rows.items())
+            for k, v in json.loads(f.read_text()).items():
+                seen.setdefault(k, set()).update(v if isinstance(v, list) else [v])
+    return [(k, next(iter(v))) for k, v in seen.items() if len(v) == 1]
 
 
 def search(name: str) -> list[dict]:
@@ -309,7 +317,8 @@ def load(con, profile: dict) -> dict:
 
 
 CANDIDATE_SUFFIX = r"\(([^(),]+),\s*([^(),]+)(?:\s*\([^()]*\))?\)\s*$"   # "(LAST, FIRST M (COUNTY))"
-PARTY_NAME = r"\b(DEMOCRATIC|REPUBLICAN|LIBERTARIAN|GREEN)\b.*\b(PARTY|EXECUTIVE COMMITTEE|EXEC COMM)\b"
+PARTY_NAME = (r"\b(DEMOCRATIC|REPUBLICAN|LIBERTARIAN|GREEN)\b.*\b(PARTY|EXECUTIVE COMMITTEE|EXEC COMM)\b"
+              r"|^(NC |N\.C\. )?(DEC|REC|GOP)\b")   # NC DEC / NC REC = state party executive committees
 
 
 def committees_sql() -> str:
@@ -334,7 +343,12 @@ def committees_sql() -> str:
         SELECT committee_id, committee_name, kind, NULL AS office_raw,
                CASE WHEN kind = 'candidate' THEN 'unknown' ELSE kind END AS office_category,  -- no office in export
                split_part(committee_id, '-', 1) AS district,
-               CASE WHEN party_label IS NOT NULL THEN party_label
+               CASE WHEN kind = 'candidate' AND party_label IS NOT NULL THEN party_label
+                    WHEN kind = 'party_committee' AND regexp_matches(upper(committee_name), '^(NC |N\\.C\\. )?DEC\\b')
+                        THEN 'democratic'
+                    WHEN kind = 'party_committee' AND regexp_matches(upper(committee_name), '^(NC |N\\.C\\. )?(REC|GOP)\\b')
+                        THEN 'republican'
+                    WHEN kind = 'party_committee' AND party_label IS NOT NULL THEN party_label
                     ELSE {L.committee_party_sql("NULL", "kind", "committee_name")} END AS party,
                CASE WHEN kind = 'candidate' THEN trim(regexp_extract(committee_name, {sql_str(CANDIDATE_SUFFIX)}, 1)) END
                    AS cand_last,

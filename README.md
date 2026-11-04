@@ -305,7 +305,8 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Excludes:** Federal candidates (use FEC); Reports filed only as scanned images (not data-entered)
 - **Rule:** Only receipts load: the export's expenditure types are cleared before each request.
 - **Rule:** 'Aggregated Individual Contribution' rows are lump sums: contributor_type 'unitemized'.
-- **Rule:** Party comes from the SBoE party filter (DEM/REP); other committees are not_applicable or unknown.
+- **Rule:** Party comes from the SBoE party filter (DEM/REP), applied only to candidate and party committees and only when a committee appears under exactly one party (PACs appear under both, so the filter is not a registration field). NC DEC / NC REC are the state party executive committees.
+- **Rule:** In-kind ('Nonmonetary Gift') is filed under expenditure code NMG, so that one code is kept in the export.
 - **Rule:** Candidate committees are recognized by the '(LAST, FIRST)' suffix SBoE adds to their names.
 - **Known gap:** No transaction ID: IDs are row hashes plus occurrence number, so NC history across syncs is approximate.
 - **Known gap:** No office in the export, so office breakdowns are unavailable; the committee ID prefix shows state (STA), federal (FED), or county-level committees (e.g. WAK, MEC).

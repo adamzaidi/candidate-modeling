@@ -34,7 +34,7 @@ RECEIPTS = [row("JANE DOE", "Individual", STEIN, "100.00"), row("JANE DOE", "Ind
             row("ACME", "Nonmonetary Gift", PAC, "300.00"), row("BANK", "Interest", DEMS, "4.00"),
             row("LENDER", "Loan", STEIN, "10000.00"), row("OUT OF STATE", "Individual", DEMS, "50.00", state="VA")]
 EXPENSE = row("VENDOR", "Operating Exp", STEIN, "999.00")
-PARTY = {"'DEM'": {STEIN, DEMS}, "'REP'": set()}
+PARTY = {"'DEM'": {STEIN, DEMS, PAC}, "'REP'": {PAC}}   # real filter: PACs show up under both parties
 
 
 def _csv(rows):
@@ -51,8 +51,10 @@ def _export(req):
     assert f["__RequestVerificationToken"] == "TOK2"
     p = json.loads(f["searchParamsJson"])
     rows = [r for r in RECEIPTS if r["Date Occured"][:2] == p["DateFrom"][:2] and r["Date Occured"][-4:] == p["DateFrom"][-4:]]
-    if p.get("ExpenditureType"):
+    if "OPER" in p.get("ExpenditureType", ""):
         rows = rows + [EXPENSE]                     # real site: expenditures leak in unless cleared
+    if "NMG" not in p.get("ExpenditureType", ""):
+        rows = [r for r in rows if r["Transction Type"] != "Nonmonetary Gift"]   # in-kind lives under code NMG
     if p["PartyType"] in PARTY:
         rows = [r for r in rows if r["Committee SBoE ID"] in PARTY[p["PartyType"]]]
     return 200, {"content-type": "text/csv"}, _csv(rows)
@@ -60,7 +62,7 @@ def _export(req):
 
 def _results(req):
     f = {k: v[0] for k, v in parse_qs(req.body).items()}
-    params = {"ReceiptType": "'IND '", "ExpenditureType": "'OPER'", "PartyType": "'DEM','REP','UNA'",
+    params = {"ReceiptType": "'IND '", "ExpenditureType": "'NMG ','OPER'", "PartyType": "'DEM','REP','UNA'",
               "DateFrom": f["Filter.StartDate"], "DateTo": f["Filter.EndDate"]}
     body = (f'<div id="grid" data-search-params="{html.escape(json.dumps(params))}"></div>'
             '<form><input name="__RequestVerificationToken" type="hidden" value="TOK2" /></form>')
@@ -87,7 +89,7 @@ def test_sync_receipts_only_with_party_and_ids(nc_api):
     c = duckdb.connect()
     ids = [r[0] for r in c.execute(f"SELECT txn_id FROM read_parquet({nc._tx_list()})").fetchall()]
     assert len(ids) == len(set(ids)) == len(RECEIPTS)                              # identical rows both kept
-    assert dict(nc._party_rows()) == {STEIN: "democratic", DEMS: "democratic"}
+    assert dict(nc._party_rows()) == {STEIN: "democratic", DEMS: "democratic"}   # PAC ambiguous -> no label
 
 
 def test_normalized_labels(nc_api):
