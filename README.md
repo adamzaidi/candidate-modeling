@@ -129,7 +129,8 @@ tests/                          offline tests (fixtures + mocked HTTP); `pytest 
 - **contribution-kind**: Every contribution has contribution_kind: monetary, in_kind, return (negative), transfer (from another committee of the same candidate, FEC line 12), loan, or other_receipt. Totals include monetary, in_kind, return, and transfer; in_kind_total and returns_total are reported separately.
 - **returns-negative**: Returned contributions are negative amounts where the source reports them.
 - **in-state-share**: In-state share counts only rows with a known donor state; unitemized lump sums are left out.
-- **nominal-dollars**: Amounts are nominal dollars; nothing is inflation-adjusted.
+- **nominal-dollars**: Stored amounts are nominal dollars. Inflation adjustment happens only in outputs that say so.
+- **bea-normalization**: When BEA data is synced (sync_state('BEA')), compare_elections adds a bea block: real dollars via the PCE price index (DPCERG, rebased to the latest full year), per capita (state population), and dollars per $100k of state personal income (SAINC1). A year without published data uses the latest available year or a partial-quarter price average, and says so (income_year_is_latest_available, pce_basis). BEA revises these series; the file vintages are included in every result.
 - **statewide-double-count**: Statewide totals add up money received by every committee, so committee-to-committee transfers (PAC to candidate, party to candidate) and conduits that forward earmarked gifts (e.g. ActBlue Texas) are counted at each hop. Prefer the individuals-only total when comparing statewide money.
 - **self-funding**: A candidate's money to their own campaign is usually typed 'individual' (e.g. $200M from Richard Jackson to Jackson for Governor in GA, 2026). self_funding_total flags individual gifts whose donor name matches the candidate (surname as a word plus the first 4 letters of the first name). Nicknames on one side only are missed, so treat it as a floor and check top_donors and pct_from_top_donor too.
 - **conduits**: Conduits (ActBlue, WinRed, and similar) forward earmarked gifts that candidates also itemize. Committees flagged is_conduit (e.g. ActBlue Texas) are reported as conduit_recipient_total; total_excluding_conduits removes them. Gifts whose donor is a conduit are reported as from_conduit_total.
@@ -216,6 +217,17 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Rule:** Rows are marked removed only after a complete pass over a committee-cycle.
 - **Known gap:** Itemized data lags summary totals by weeks; newest itemized dates trail coverage_end_date.
 - **Known gap:** Only cycles/committees that have been fetched are present; check fetch_state.complete.
+
+#### BEA: [Bureau of Economic Analysis (regional and national accounts)](https://apps.bea.gov/)
+
+- **Covers:** Reference data for normalization: state personal income, population, and per capita personal income (SAINC1); PCE price index (DPCERG) for inflation adjustment.
+- **History from:** 1929 (SAINC1, PCE)
+- **Refresh:** Bulk files; sync re-downloads when Last-Modified changes. BEA revises past years, so the vintage is recorded with every result.
+- **Excludes:** Not campaign finance data; used only to put campaign money in context
+- **Rule:** Real dollars use the PCE price index (2017 = 100), rebased to the latest full year with an annual value.
+- **Rule:** A year with no annual PCE value uses the average of its published quarters (flagged partial).
+- **Rule:** Per-capita and share-of-income figures use that year's state values, or the latest published year if the election year is not out yet (flagged).
+- **Known gap:** State personal income for the current year is published months after it ends.
 
 #### TX: [Texas Ethics Commission (TEC)](https://www.ethics.state.tx.us/search/cf/)
 

@@ -27,6 +27,11 @@ def _state_views(con) -> list[str]:
         _, p = michigan._dirs()
         con.execute(f"CREATE TEMP VIEW mi_contribs_raw AS SELECT * FROM read_parquet({parquet_list(p, michigan.PARQUET)})")
         made.append("mi_contribs_raw")
+    from .sources import bea
+    if bea.is_synced():
+        con.execute(f"CREATE TEMP VIEW bea_state_income AS SELECT * FROM read_parquet({sql_str(bea.income_path())})")
+        con.execute(f"CREATE TEMP VIEW bea_pce AS SELECT * FROM read_parquet({sql_str(bea.pce_path())})")
+        made += ["bea_state_income", "bea_pce"]
     return made
 
 

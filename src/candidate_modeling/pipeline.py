@@ -62,6 +62,9 @@ def add_candidate(name: str, state: str | None = None, party: str | None = None,
 # ---------- data ----------
 
 def sync_state(state: str, **kw) -> dict:
+    if state.upper() == "BEA":  # reference data for normalization, not a state connector
+        from .sources import bea
+        return bea.sync(force=kw.get("force", False))
     return states.get(state).sync(**kw)
 
 

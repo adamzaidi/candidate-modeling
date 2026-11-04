@@ -219,8 +219,12 @@ def _deltas(rows: list[dict], checkpoints) -> list[dict]:
             out.append({"from": a["election_year"], "to": b["election_year"],
                         "skipped": "at least one window is not fully covered (rule coverage-first)"})
             continue
-        out.append({"from": a["election_year"], "to": b["election_year"],
-                    **{f"{k}_pct_change": _pct(a.get(k), b.get(k)) for k in keys}})
+        d = {"from": a["election_year"], "to": b["election_year"],
+             **{f"{k}_pct_change": _pct(a.get(k), b.get(k)) for k in keys}}
+        if a.get("bea") and b.get("bea"):
+            for k in ("real_total", "real_individuals_total", "real_per_capita_total", "per_100k_personal_income"):
+                d[f"{k}_pct_change"] = _pct(a["bea"].get(k), b["bea"].get(k))
+        out.append(d)
     return out
 
 
@@ -357,12 +361,14 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
                     "note": "Final pre-election and post-election reports are not all filed yet (rule reporting-lag); "
                             "late checkpoints will rise as they arrive."}
                 notes.append(f"{y}: data ends {r['last_date']}, {gap} days before the {stage} (reporting lag).")
+            _add_bea(r, cal_state if state else (next(iter(homes.values())) if len(set(homes.values())) == 1 else None), y)
             out_rows.append(r)
 
         result = {"subject": subject, "stage": stage, "years": out_rows, "changes": _deltas(out_rows, checkpoints),
                   "checkpoints_days_before": list(checkpoints), "notes": notes,
                   "rules_applied": ["election-window", "stage-window", "align-by-days", "coverage-first",
                                     "reporting-lag", "self-funding", "contribution-kind", "conduits", "clean-view",
+                                    "bea-normalization",
                                     "itemized-only"]}
 
         if group_by and windows:
@@ -403,6 +409,32 @@ def compare_elections(years: list[int], state: str | None = None, slugs: list[st
             con.close()
         else:
             ctx.__exit__(None, None, None)
+
+
+REAL_KEYS = ("total", "individuals_total", "total_excluding_conduits")
+
+
+def _add_bea(r: dict, state: str | None, year: int) -> None:
+    """Real dollars (PCE price index), per capita, and share of state personal income (rule bea-normalization)."""
+    from .sources import bea
+    if not state or not r.get("total"):
+        return
+    ctx = bea.context(state, year)
+    if not ctx:
+        return
+    real = {f"real_{k}": round(r[k] * ctx["deflator"], 2) for k in REAL_KEYS if r.get(k) is not None}
+    r["bea"] = {
+        **real,
+        f"real_dollars_base_year": ctx["pce_base_year"],
+        "per_capita_total": round(r["total"] / ctx["population"], 4) if ctx["population"] else None,
+        "real_per_capita_total": round(r["total"] * ctx["deflator"] / ctx["population"], 4) if ctx["population"] else None,
+        "per_capita_individuals": (round(r["individuals_total"] / ctx["population"], 4)
+                                   if ctx["population"] and r.get("individuals_total") else None),
+        "per_100k_personal_income": round(100_000 * r["total"] / (ctx["personal_income_musd"] * 1e6), 4)
+                                    if ctx["personal_income_musd"] else None,
+        "income_year": ctx["income_year"], "income_year_is_latest_available": ctx["income_year_is_latest_available"],
+        "pce_basis": ctx["pce_basis"], "vintage": {k: v for k, v in bea.vintage().items() if k.endswith("vintage")},
+    }
 
 
 def _slug_coverage(profiles: list[dict], w: dict) -> dict:

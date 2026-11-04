@@ -58,7 +58,13 @@ RULES: dict[str, list[tuple[str, str]]] = {
         ("returns-negative", "Returned contributions are negative amounts where the source reports them."),
         ("in-state-share",
          "In-state share counts only rows with a known donor state; unitemized lump sums are left out."),
-        ("nominal-dollars", "Amounts are nominal dollars; nothing is inflation-adjusted."),
+        ("nominal-dollars", "Stored amounts are nominal dollars. Inflation adjustment happens only in outputs that say so."),
+        ("bea-normalization",
+         "When BEA data is synced (sync_state('BEA')), compare_elections adds a bea block: real dollars via the PCE "
+         "price index (DPCERG, rebased to the latest full year), per capita (state population), and dollars per $100k "
+         "of state personal income (SAINC1). A year without published data uses the latest available year or a "
+         "partial-quarter price average, and says so (income_year_is_latest_available, pce_basis). BEA revises these "
+         "series; the file vintages are included in every result."),
         ("statewide-double-count",
          "Statewide totals add up money received by every committee, so committee-to-committee transfers "
          "(PAC to candidate, party to candidate) and conduits that forward earmarked gifts (e.g. ActBlue Texas) "
@@ -201,8 +207,8 @@ NOT_PLANNED = [
 
 
 def _sources() -> dict:
-    from .sources import fec, states
-    out = {"FEC": fec.SCOPE}
+    from .sources import bea, fec, states
+    out = {"FEC": fec.SCOPE, "BEA": bea.SCOPE}
     for code, m in states.REGISTRY.items():
         out[code] = m.SCOPE
     return out
@@ -221,7 +227,9 @@ def data_scope() -> dict:
     """Rules + per-source scope + live coverage on this machine."""
     from .sources import states
     from .sources.states import PLANNED
+    from .sources import bea
     live = {code: {"synced": m.is_synced(), "covered_years": m.covered_years()} for code, m in states.REGISTRY.items()}
+    live["BEA"] = {"synced": bea.is_synced(), "vintage": bea.vintage()}
     sources = _sources()
     for code, info in live.items():
         sources[code] = {**sources[code], **info}
