@@ -68,6 +68,11 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
   with Page = (list page + 1) * 10 (the wrong page silently returns 0 rows). Per-committee parquet + manifest
   income checkpoint, so sync is resumable and refreshes are incremental. Kinds: 'Receive CCEC Funding' ->
   public_funds (excluded and reported); '$100 or Less' -> unitemized; '$5 Qualifying' handoff -> other_receipt.
+- WI (sources/states/wisconsin.py): Sunshine tRPC, GET /api/trpc/<proc>?input={"json": {...}}.
+  getTransactions is statewide with cursor paging (take <= 1000); transactionType must be an ARRAY ([1]).
+  Category codes give contribution_kind exactly. The officeIds filter targets IE subjects, NOT a committee's office,
+  so WI has no office data; candidate committees carry no person name (no self-match). Years download into
+  tx_YYYY_partial and are renamed only when complete, so a partial year is never read.
 - Never use DuckDB `strict_mode=false` / `ignore_errors` as a fix for broken files. Count rows
   against an independent parse first.
 
@@ -83,4 +88,4 @@ time. Owner: Adam. Exposed to agents as the `candidate-modeling` MCP server (use
 - Talarico: TX loaded (62,097 rows, ~$4.0M, 2017 to June 2026). FEC pull is only partial (2 pages,
   DEMO_KEY). Run `cm fetch talarico --sources fec` once the data.gov key is in `.env`. His committee
   totals: $146.3M receipts, $75.3M unitemized (through 2026-10-14).
-- States done: TX, MI, PA, GA, AZ. Next: WI, NC, NV, FL, OH, CA, NY.
+- States done: TX, MI, PA, GA, AZ, WI. Next: NC, NV, FL, OH, CA, NY.

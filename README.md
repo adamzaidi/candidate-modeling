@@ -14,7 +14,8 @@ as a CLI. First subject: **James Talarico** (Texas).
 | Pennsylvania | [DOS full export](https://www.pa.gov/agencies/dos/resources/voting-and-elections-resources/campaign-finance-data) | State/local filers, by year since 2000 | done |
 | Georgia | [PeachFile](https://efile.ethics.ga.gov/) bulk API | Filings from 2025 on (legacy 2017-2024 not covered) | done |
 | Arizona | [See The Money](https://seethemoney.az.gov/) JSON endpoints, committee by committee | Per two-year cycle as synced (no bulk file) | done |
-| Next | WI, NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
+| Wisconsin | [Sunshine](https://campaignfinance.wi.gov/) statewide API (replaced CFIS) | Since mid-2008; no office data | done |
+| Next | NC, NV, FL, OH, CA, NY | | planned (`sources/states/__init__.py`) |
 | Legislative | [Open States](https://docs.openstates.org/api-v3/) | Bills, votes | first-pass fetcher |
 
 ## Quick start
@@ -279,6 +280,19 @@ Deliberately not planned: Guessing donor gender, race, or ethnicity from names (
 - **Rule:** Income detail page = (entity list page + 1) * 10: 20 candidates, 30 PACs, 40 parties, 50 organizations.
 - **Rule:** Transactions are keyed by PublicTransactionId.
 - **Known gap:** Cycle-based: a cycle that has not been synced is not covered even if neighboring cycles are.
+
+#### WI: [Wisconsin Ethics Commission (Sunshine, formerly CFIS)](https://campaignfinance.wi.gov/)
+
+- **Covers:** State candidates, PACs, party and legislative campaign committees, conduits, and other registrants filing with the Ethics Commission; migrated history from mid-2008.
+- **History from:** July 2008
+- **Refresh:** Statewide API, one calendar year at a time; a year is re-downloaded only when its contribution count changes (~10 minutes per year).
+- **Excludes:** Federal candidates (use FEC); Local candidates and referenda (filed with local clerks)
+- **Rule:** Only transactionType 1 (Contribution) loads; conduit release records (type 3) are not double counted.
+- **Rule:** contribution_kind comes from category flags: loans (commercial/personal), in-kind, returned contributions, other income and forgiven obligations (other_receipt), redirected (other_receipt).
+- **Rule:** Recipients are the filing committee (createdByEntity); committee type and party come from its registration.
+- **Known gap:** No office for candidate committees (not exposed by the public API), so office breakdowns are unavailable.
+- **Known gap:** Candidate committees have no candidate person name, so name-based self-funding cannot be computed.
+- **Known gap:** No donor employer field; occupation only.
 <!-- END GENERATED: data-scope -->
 
 ## Adding a state
