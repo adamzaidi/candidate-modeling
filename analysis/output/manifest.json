@@ -1,0 +1,74 @@
+{
+  "today": "2026-11-10",
+  "question": "small_share = unitemized individual / individual contributions",
+  "cycles": [
+    2016,
+    2018,
+    2020,
+    2022,
+    2024
+  ],
+  "n": 6101,
+  "min_individual": 50000.0,
+  "source": "FEC candidate summary CSV (public bulk, no API key)",
+  "vintages": {
+    "2012": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2012.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2012/candidate_summary_2012.csv",
+      "bytes": 1323739,
+      "sha256": "2a86beec60253424eef4de354d49809710fa8f059ede19353f37ab58a1e1b5ce"
+    },
+    "2014": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2014.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2014/candidate_summary_2014.csv",
+      "bytes": 1037940,
+      "sha256": "ef0a2e0035de1ddd1db5d4558b9de2eb8f6be0b68f553381ef778421cf3cde23"
+    },
+    "2016": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2016.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2016/candidate_summary_2016.csv",
+      "bytes": 1657972,
+      "sha256": "62e6e26926e0e52b02f2c7ee003f7e7cf70d0e3c7c4c9cbe1c458b7c23e4bdfd"
+    },
+    "2018": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2018.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2018/candidate_summary_2018.csv",
+      "bytes": 1470129,
+      "sha256": "aa966f509ca1910435a5ec36716cc110ce49c5fd8ea105fbc5ca741683028ee1"
+    },
+    "2020": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2020.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2020/candidate_summary_2020.csv",
+      "bytes": 1908979,
+      "sha256": "a112d5318fcbd3d9ecbd55d57990f97910cbbb7c400b046fc6252715f9768f67"
+    },
+    "2022": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2022.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2022/candidate_summary_2022.csv",
+      "bytes": 1730715,
+      "sha256": "4a243de3abad7dd39c0a03770ee42c554b9c13aa711e6c6d17906b9133b41620"
+    },
+    "2024": {
+      "path": "/workspace/data/raw/fec/candidate_summary_2024.csv",
+      "url": "https://www.fec.gov/files/bulk-downloads/2024/candidate_summary_2024.csv",
+      "bytes": 1950983,
+      "sha256": "d469f784b1ea88ed6d3662a04adb5d79306e1a1d2c9aeecda317f4a9eddf8537"
+    }
+  },
+  "ols_cluster_incumbent": {
+    "coef": -0.12585464471593918,
+    "se": 0.006668902389633949,
+    "t": -18.87186786712697,
+    "p": 1.9430751986936952e-79,
+    "ci_low": -0.13892545321603483,
+    "ci_high": -0.11278383621584354
+  },
+  "figures": {
+    "fig1": "fig1_share_by_incumbency_party.png",
+    "fig2": "fig2_coefficients.png",
+    "fig3": "fig3_residuals.png",
+    "fig4": "fig4_share_vs_size.png"
+  },
+  "writeup": "/workspace/docs/regression-writeup.md",
+  "pdf": "/workspace/docs/regression-writeup.pdf"
+}

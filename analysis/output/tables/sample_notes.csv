@@ -1,0 +1,2 @@
+n_raw_by_cycle,n_sample,n_clipped_share,min_individual,min_receipts,cycles,dropped
+"{2012: 3481, 2014: 2692, 2016: 4636, 2018: 3791, 2020: 5128, 2022: 4529, 2024: 5302}",6101,2,50000.0,50000.0,"[2016, 2018, 2020, 2022, 2024]","{'wrong_cycle': 6173, 'not_house_senate': 4645, 'not_major_party': 3733, 'unknown_ici': 15, 'below_money_floor': 8892}"

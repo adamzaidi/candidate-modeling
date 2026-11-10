@@ -1,0 +1,748 @@
+{
+  "today": "2026-11-10",
+  "sample": {
+    "n_raw_by_cycle": {
+      "2012": 3481,
+      "2014": 2692,
+      "2016": 4636,
+      "2018": 3791,
+      "2020": 5128,
+      "2022": 4529,
+      "2024": 5302
+    },
+    "n_sample": 6101,
+    "n_clipped_share": 2,
+    "min_individual": 50000.0,
+    "min_receipts": 50000.0,
+    "cycles": [
+      2016,
+      2018,
+      2020,
+      2022,
+      2024
+    ],
+    "dropped": {
+      "wrong_cycle": 6173,
+      "not_house_senate": 4645,
+      "not_major_party": 3733,
+      "unknown_ici": 15,
+      "below_money_floor": 8892
+    }
+  },
+  "means": {
+    "small_share": 0.20177478604159074,
+    "pac_share": 0.1933858376939615,
+    "small_challenger": 0.26318282483862865,
+    "small_open": 0.17428949131561003,
+    "small_incumbent": 0.1458738016303777,
+    "small_dem": 0.22909189784265174,
+    "small_rep": 0.17417865267023885,
+    "individual_median": 469809.73,
+    "n_house": 5444,
+    "n_senate": 657,
+    "n_incumbent": 2101,
+    "n_challenger": 2558,
+    "n_open": 1442
+  },
+  "ols_cluster": {
+    "const": {
+      "coef": -0.011329935871368586,
+      "se": 0.03693916531117792,
+      "t": -0.3067187841393944,
+      "p": 0.7590574308319534,
+      "ci_low": -0.0837293695002486,
+      "ci_high": 0.06106949775751143
+    },
+    "incumbent": {
+      "coef": -0.12585464471593918,
+      "se": 0.006668902389633949,
+      "t": -18.87186786712697,
+      "p": 1.9430751986936952e-79,
+      "ci_low": -0.13892545321603483,
+      "ci_high": -0.11278383621584354
+    },
+    "open_seat": {
+      "coef": -0.08354800352331991,
+      "se": 0.005721499265380544,
+      "t": -14.602466879415571,
+      "p": 2.708641387001838e-48,
+      "ci_low": -0.09476193602103815,
+      "ci_high": -0.07233407102560167
+    },
+    "senate": {
+      "coef": 0.0461590242461606,
+      "se": 0.010858841905716895,
+      "t": 4.2508238582844715,
+      "p": 2.1298562261974184e-05,
+      "ci_low": 0.0248760851971412,
+      "ci_high": 0.06744196329518
+    },
+    "democrat": {
+      "coef": 0.047206184544270544,
+      "se": 0.011097766827699728,
+      "t": 4.253665199240371,
+      "p": 2.1029966019848046e-05,
+      "ci_low": 0.025454961253155748,
+      "ci_high": 0.06895740783538534
+    },
+    "log_individual": {
+      "coef": 0.01610032601557198,
+      "se": 0.0026886755892173474,
+      "t": 5.98819957310605,
+      "p": 2.121766164456856e-09,
+      "ci_low": 0.01083061869459397,
+      "ci_high": 0.02137003333654999
+    },
+    "cycle_2018": {
+      "coef": 0.02880456866196295,
+      "se": 0.004474433791797174,
+      "t": 6.437589648721449,
+      "p": 1.213856312662637e-10,
+      "ci_low": 0.020034839578831495,
+      "ci_high": 0.0375742977450944
+    },
+    "cycle_2020": {
+      "coef": 0.06376943498946215,
+      "se": 0.007266678089568779,
+      "t": 8.775596524772762,
+      "p": 1.700003017398392e-18,
+      "ci_low": 0.04952700764666102,
+      "ci_high": 0.07801186233226329
+    },
+    "cycle_2022": {
+      "coef": 0.04051092254955618,
+      "se": 0.008262982562487838,
+      "t": 4.902699750749451,
+      "p": 9.452841200141037e-07,
+      "ci_low": 0.024315774322197534,
+      "ci_high": 0.056706070776914835
+    },
+    "cycle_2024": {
+      "coef": 0.04041050554493207,
+      "se": 0.009210530038744594,
+      "t": 4.3874245428811465,
+      "p": 1.1470076723852674e-05,
+      "ci_low": 0.02235819839046836,
+      "ci_high": 0.05846281269939578
+    },
+    "_n": 6101,
+    "_r2": 0.15307683213516754
+  },
+  "ols_hc3": {
+    "const": {
+      "coef": -0.011329935871368586,
+      "se": 0.02352994543987556,
+      "t": -0.48151135328040545,
+      "p": 0.6301531126502364,
+      "ci_low": -0.05744778149171716,
+      "ci_high": 0.03478790974897999
+    },
+    "incumbent": {
+      "coef": -0.12585464471593918,
+      "se": 0.004856462862607366,
+      "t": -25.914878436519043,
+      "p": 4.526909326564282e-148,
+      "ci_low": -0.1353731370189059,
+      "ci_high": -0.11633615241297246
+    },
+    "open_seat": {
+      "coef": -0.08354800352331991,
+      "se": 0.005575973207993351,
+      "t": -14.983573343492925,
+      "p": 9.40228907139573e-51,
+      "ci_low": -0.09447671018974715,
+      "ci_high": -0.07261929685689267
+    },
+    "senate": {
+      "coef": 0.0461590242461606,
+      "se": 0.008116835327637328,
+      "t": 5.68682526907894,
+      "p": 1.2942275555504108e-08,
+      "ci_low": 0.030250319335549065,
+      "ci_high": 0.06206772915677213
+    },
+    "democrat": {
+      "coef": 0.047206184544270544,
+      "se": 0.004224822630880743,
+      "t": 11.173530504978746,
+      "p": 5.495235122248611e-29,
+      "ci_low": 0.038925684346674524,
+      "ci_high": 0.05548668474186656
+    },
+    "log_individual": {
+      "coef": 0.01610032601557198,
+      "se": 0.0018854790100417786,
+      "t": 8.53911707837852,
+      "p": 1.3525128478380299e-17,
+      "ci_low": 0.012404855062283858,
+      "ci_high": 0.0197957969688601
+    },
+    "cycle_2018": {
+      "coef": 0.02880456866196295,
+      "se": 0.005950933567314302,
+      "t": 4.840344516728096,
+      "p": 1.2961423143616159e-06,
+      "ci_low": 0.017140953195636452,
+      "ci_high": 0.040468184128289446
+    },
+    "cycle_2020": {
+      "coef": 0.06376943498946215,
+      "se": 0.006353250863723299,
+      "t": 10.037292144968177,
+      "p": 1.0450354544565371e-23,
+      "ci_low": 0.051317292111816494,
+      "ci_high": 0.07622157786710781
+    },
+    "cycle_2022": {
+      "coef": 0.04051092254955618,
+      "se": 0.006369230523606205,
+      "t": 6.360410790504602,
+      "p": 2.0121489148691988e-10,
+      "ci_low": 0.028027460114054832,
+      "ci_high": 0.052994384985057534
+    },
+    "cycle_2024": {
+      "coef": 0.04041050554493207,
+      "se": 0.006618467456962146,
+      "t": 6.105719459634596,
+      "p": 1.023386276978851e-09,
+      "ci_low": 0.027438547696435864,
+      "ci_high": 0.05338246339342828
+    },
+    "_n": 6101,
+    "_r2": 0.15307683213516754
+  },
+  "frac_ape": {
+    "incumbent": -0.11520564286497136,
+    "open_seat": -0.07221062281891344,
+    "senate": 0.04460137718563544,
+    "democrat": 0.04771627743344439,
+    "log_individual": 0.014632407888351257
+  },
+  "vif": [
+    {
+      "variable": "incumbent",
+      "vif": 1.4117716550500385
+    },
+    {
+      "variable": "open_seat",
+      "vif": 1.2026699938918426
+    },
+    {
+      "variable": "senate",
+      "vif": 1.1269404833935224
+    },
+    {
+      "variable": "democrat",
+      "vif": 1.0147809470151008
+    },
+    {
+      "variable": "log_individual",
+      "vif": 1.2821748421966308
+    }
+  ],
+  "correlation": [
+    {
+      "variable": "small_share",
+      "small_share": 1.0,
+      "pac_share": -0.35627076090638055,
+      "incumbent": -0.23118192849311575,
+      "open_seat": -0.08725454719884902,
+      "senate": 0.13536049757916727,
+      "democrat": 0.15667254692400015,
+      "log_individual": 0.06352028809785283
+    },
+    {
+      "variable": "pac_share",
+      "small_share": -0.35627076090638055,
+      "pac_share": 1.0,
+      "incumbent": 0.7974517828366188,
+      "open_seat": -0.27611303513488705,
+      "senate": -0.17140404808479934,
+      "democrat": -0.02992386010687066,
+      "log_individual": 0.15636884090052164
+    },
+    {
+      "variable": "incumbent",
+      "small_share": -0.23118192849311575,
+      "pac_share": 0.7974517828366188,
+      "incumbent": 1.0,
+      "open_seat": -0.4031988692717451,
+      "senate": -0.09041587037964706,
+      "democrat": -0.020585355999134854,
+      "log_individual": 0.35309745971887024
+    },
+    {
+      "variable": "open_seat",
+      "small_share": -0.08725454719884902,
+      "pac_share": -0.27611303513488705,
+      "incumbent": -0.4031988692717451,
+      "open_seat": 1.0,
+      "senate": 0.033249483411011846,
+      "democrat": -0.05452576248936148,
+      "log_individual": -0.10881399497786984
+    },
+    {
+      "variable": "senate",
+      "small_share": 0.13536049757916727,
+      "pac_share": -0.17140404808479934,
+      "incumbent": -0.09041587037964706,
+      "open_seat": 0.033249483411011846,
+      "senate": 1.0,
+      "democrat": -0.04248019767528328,
+      "log_individual": 0.2636733467473506
+    },
+    {
+      "variable": "democrat",
+      "small_share": 0.15667254692400015,
+      "pac_share": -0.02992386010687066,
+      "incumbent": -0.020585355999134854,
+      "open_seat": -0.05452576248936148,
+      "senate": -0.04248019767528328,
+      "democrat": 1.0,
+      "log_individual": 0.05330351885362008
+    },
+    {
+      "variable": "log_individual",
+      "small_share": 0.06352028809785283,
+      "pac_share": 0.15636884090052164,
+      "incumbent": 0.35309745971887024,
+      "open_seat": -0.10881399497786984,
+      "senate": 0.2636733467473506,
+      "democrat": 0.05330351885362008,
+      "log_individual": 1.0
+    }
+  ],
+  "group_means": [
+    {
+      "group": "incumbency",
+      "ici": "challenger",
+      "n": 2558,
+      "small_share_mean": 0.26318282483862865,
+      "small_share_sd": 0.19097019603260054,
+      "pac_share_mean": 0.04938787518130379,
+      "individual_mean": 1370518.745809226,
+      "receipts_mean": 1749103.0509304143
+    },
+    {
+      "group": "incumbency",
+      "ici": "incumbent",
+      "n": 2101,
+      "small_share_mean": 0.14587380163037772,
+      "small_share_sd": 0.1351342541393648,
+      "pac_share_mean": 0.44731669181411216,
+      "individual_mean": 2497609.6006615898,
+      "receipts_mean": 3805799.514564493
+    },
+    {
+      "group": "incumbency",
+      "ici": "open",
+      "n": 1442,
+      "small_share_mean": 0.17428949131561,
+      "small_share_sd": 0.16338469566049796,
+      "pac_share_mean": 0.0788491272923956,
+      "individual_mean": 1186968.2253536754,
+      "receipts_mean": 1772992.0789528433
+    },
+    {
+      "group": "party",
+      "party": "democratic",
+      "n": 3066,
+      "small_share_mean": 0.22909189784265177,
+      "small_share_sd": 0.17398041163767894,
+      "pac_share_mean": 0.18651507484208119,
+      "individual_mean": 2101245.4246771038,
+      "receipts_mean": 2736470.7005675146
+    },
+    {
+      "group": "party",
+      "party": "republican",
+      "n": 3035,
+      "small_share_mean": 0.17417865267023885,
+      "small_share_sd": 0.1722270149472443,
+      "pac_share_mean": 0.2003267796721708,
+      "individual_mean": 1325355.6611762769,
+      "receipts_mean": 2186763.0294200988
+    },
+    {
+      "group": "office",
+      "office": "H",
+      "n": 5444,
+      "small_share_mean": 0.19353408473777095,
+      "small_share_sd": 0.17157641846987276,
+      "pac_share_mean": 0.20712748417751195,
+      "individual_mean": 982314.764285452,
+      "receipts_mean": 1540697.2636425423
+    },
+    {
+      "group": "office",
+      "office": "S",
+      "n": 657,
+      "small_share_mean": 0.2700584662516289,
+      "small_share_sd": 0.19008410214004248,
+      "pac_share_mean": 0.07952050518795133,
+      "individual_mean": 7788662.598112633,
+      "receipts_mean": 10105462.799025875
+    },
+    {
+      "group": "cycle",
+      "cycle": 2016,
+      "n": 945,
+      "small_share_mean": 0.14903012342668867,
+      "small_share_sd": 0.1406639978203561,
+      "pac_share_mean": 0.2774453385444982,
+      "individual_mean": 1006278.4074391535,
+      "receipts_mean": 1667468.528666667
+    },
+    {
+      "group": "cycle",
+      "cycle": 2018,
+      "n": 1312,
+      "small_share_mean": 0.1969791044644506,
+      "small_share_sd": 0.16285487947900631,
+      "pac_share_mean": 0.19035650203021282,
+      "individual_mean": 1274634.0944359754,
+      "receipts_mean": 1971275.4237652435
+    },
+    {
+      "group": "cycle",
+      "cycle": 2020,
+      "n": 1254,
+      "small_share_mean": 0.2343217802780297,
+      "small_share_sd": 0.18421304303133917,
+      "pac_share_mean": 0.18292429863130993,
+      "individual_mean": 2412273.449354067,
+      "receipts_mean": 3092727.6442503985
+    },
+    {
+      "group": "cycle",
+      "cycle": 2022,
+      "n": 1388,
+      "small_share_mean": 0.21249871364829143,
+      "small_share_sd": 0.1828752652948747,
+      "pac_share_mean": 0.14911055054162503,
+      "individual_mean": 1844696.9672334294,
+      "receipts_mean": 2556754.39324928
+    },
+    {
+      "group": "cycle",
+      "cycle": 2024,
+      "n": 1202,
+      "small_share_mean": 0.20213826200639567,
+      "small_share_sd": 0.1844671972204027,
+      "pac_share_mean": 0.192646344049277,
+      "individual_mean": 1877029.6013227957,
+      "receipts_mean": 2859998.571497504
+    },
+    {
+      "group": "party_cycle",
+      "party": "democratic",
+      "cycle": 2016,
+      "n": 433,
+      "small_share_mean": 0.17972740319324856,
+      "small_share_sd": 0.15155329458117173,
+      "pac_share_mean": 0.2793721531487983,
+      "individual_mean": 1166936.4065127021,
+      "receipts_mean": 1743345.7428637412
+    },
+    {
+      "group": "party_cycle",
+      "party": "democratic",
+      "cycle": 2018,
+      "n": 776,
+      "small_share_mean": 0.24138825957694515,
+      "small_share_sd": 0.164259891123898,
+      "pac_share_mean": 0.1597611132840376,
+      "individual_mean": 1477253.3548324741,
+      "receipts_mean": 2012825.8257474226
+    },
+    {
+      "group": "party_cycle",
+      "party": "democratic",
+      "cycle": 2020,
+      "n": 629,
+      "small_share_mean": 0.2529212703989592,
+      "small_share_sd": 0.1755131958270508,
+      "pac_share_mean": 0.1915357687621651,
+      "individual_mean": 2889075.65972973,
+      "receipts_mean": 3497612.70645469
+    },
+    {
+      "group": "party_cycle",
+      "party": "democratic",
+      "cycle": 2022,
+      "n": 630,
+      "small_share_mean": 0.2324240898107281,
+      "small_share_sd": 0.18243308593675622,
+      "pac_share_mean": 0.15889879683061386,
+      "individual_mean": 2401331.0177777777,
+      "receipts_mean": 3030956.2473650794
+    },
+    {
+      "group": "party_cycle",
+      "party": "democratic",
+      "cycle": 2024,
+      "n": 598,
+      "small_share_mean": 0.2203040938285623,
+      "small_share_sd": 0.1833962519321224,
+      "pac_share_mean": 0.17780972021620306,
+      "individual_mean": 2442674.3704347825,
+      "receipts_mean": 3283773.900167224
+    },
+    {
+      "group": "party_cycle",
+      "party": "republican",
+      "cycle": 2016,
+      "n": 512,
+      "small_share_mean": 0.12306933799910968,
+      "small_share_sd": 0.12514477128333062,
+      "pac_share_mean": 0.27581582541234606,
+      "individual_mean": 870409.4355664062,
+      "receipts_mean": 1603298.9315039061
+    },
+    {
+      "group": "party_cycle",
+      "party": "republican",
+      "cycle": 2018,
+      "n": 536,
+      "small_share_mean": 0.13268525303292866,
+      "small_share_sd": 0.13749003923851663,
+      "pac_share_mean": 0.23465131857318286,
+      "individual_mean": 981289.7920708955,
+      "receipts_mean": 1911120.3641791046
+    },
+    {
+      "group": "party_cycle",
+      "party": "republican",
+      "cycle": 2020,
+      "n": 625,
+      "small_share_mean": 0.2156032534203263,
+      "small_share_sd": 0.19088948165850772,
+      "pac_share_mean": 0.17425771509161728,
+      "individual_mean": 1932419.704832,
+      "receipts_mean": 2685251.317648
+    },
+    {
+      "group": "party_cycle",
+      "party": "republican",
+      "cycle": 2022,
+      "n": 758,
+      "small_share_mean": 0.19593804480616064,
+      "small_share_sd": 0.18170505938815595,
+      "pac_share_mean": 0.14097520072359998,
+      "individual_mean": 1382059.167968338,
+      "receipts_mean": 2162628.8416754617
+    },
+    {
+      "group": "party_cycle",
+      "party": "republican",
+      "cycle": 2024,
+      "n": 604,
+      "small_share_mean": 0.18415288546723066,
+      "small_share_sd": 0.1839112517606587,
+      "pac_share_mean": 0.20733558420188997,
+      "individual_mean": 1317003.8199834437,
+      "receipts_mean": 2440432.931523179
+    },
+    {
+      "group": "ici_office",
+      "ici": "challenger",
+      "office": "H",
+      "n": 2228,
+      "small_share_mean": 0.2568807910126654,
+      "small_share_sd": 0.18889131924000283,
+      "pac_share_mean": 0.05260681796087874,
+      "individual_mean": 730851.8787522442,
+      "receipts_mean": 950799.8103500898
+    },
+    {
+      "group": "ici_office",
+      "ici": "challenger",
+      "office": "S",
+      "n": 330,
+      "small_share_mean": 0.30573110169998036,
+      "small_share_sd": 0.19960217640031022,
+      "pac_share_mean": 0.027655134233143204,
+      "individual_mean": 5689239.290666667,
+      "receipts_mean": 7138859.475212121
+    },
+    {
+      "group": "ici_office",
+      "ici": "incumbent",
+      "office": "H",
+      "n": 1956,
+      "small_share_mean": 0.13948523270781318,
+      "small_share_sd": 0.13110605720336324,
+      "pac_share_mean": 0.4635484820365883,
+      "individual_mean": 1451413.408502045,
+      "receipts_mean": 2525479.061109407
+    },
+    {
+      "group": "ici_office",
+      "ici": "incumbent",
+      "office": "S",
+      "n": 145,
+      "small_share_mean": 0.23205339344097214,
+      "small_share_sd": 0.1578462658176837,
+      "pac_share_mean": 0.22835543888195084,
+      "individual_mean": 16610435.475586208,
+      "receipts_mean": 21076880.94186207
+    },
+    {
+      "group": "ici_office",
+      "ici": "open",
+      "office": "H",
+      "n": 1260,
+      "small_share_mean": 0.16542542838073332,
+      "small_share_sd": 0.15822737276054066,
+      "pac_share_mean": 0.08229619252537346,
+      "individual_mean": 698745.2094285714,
+      "receipts_mean": 1055029.2716507937
+    },
+    {
+      "group": "ici_office",
+      "ici": "open",
+      "office": "S",
+      "n": 182,
+      "small_share_mean": 0.23565608086475653,
+      "small_share_sd": 0.18451478516304282,
+      "pac_share_mean": 0.0549848295256258,
+      "individual_mean": 4566973.720219781,
+      "receipts_mean": 6743503.821813187
+    }
+  ],
+  "robustness": [
+    {
+      "spec": "main_ols_cluster_state",
+      "n": 6101,
+      "r2": 0.15307683213516754,
+      "incumbent_coef": -0.12585464471593918,
+      "incumbent_se": 0.006668902389633949,
+      "incumbent_p": 1.9430751986936952e-79,
+      "democrat_coef": 0.047206184544270544,
+      "democrat_se": 0.011097766827699728,
+      "democrat_p": 2.1029966019848046e-05
+    },
+    {
+      "spec": "ols_hc3",
+      "n": 6101,
+      "r2": 0.15307683213516754,
+      "incumbent_coef": -0.12585464471593918,
+      "incumbent_se": 0.004856462862607366,
+      "incumbent_p": 4.526909326564282e-148,
+      "democrat_coef": 0.047206184544270544,
+      "democrat_se": 0.004224822630880743,
+      "democrat_p": 5.495235122248611e-29
+    },
+    {
+      "spec": "ols_cluster_candidate",
+      "n": 6101,
+      "r2": 0.15307683213516754,
+      "incumbent_coef": -0.12585464471593918,
+      "incumbent_se": 0.0060342275582651985,
+      "incumbent_p": 1.3224309571229613e-96,
+      "democrat_coef": 0.047206184544270544,
+      "democrat_se": 0.005312525736998013,
+      "democrat_p": 6.344703071301308e-19
+    },
+    {
+      "spec": "house_only",
+      "n": 5444,
+      "r2": 0.14000471711089613,
+      "incumbent_coef": -0.12591090644785122,
+      "incumbent_se": 0.006791490255430875,
+      "incumbent_p": 9.911930078786036e-77,
+      "democrat_coef": 0.045564511444924946,
+      "democrat_se": 0.011141637840124438,
+      "democrat_p": 4.321730314727563e-05
+    },
+    {
+      "spec": "min_individual_100k",
+      "n": 5226,
+      "r2": 0.16543782984925182,
+      "incumbent_coef": -0.12386666674483159,
+      "incumbent_se": 0.006532735176589652,
+      "incumbent_p": 3.58815005383625e-80,
+      "democrat_coef": 0.028909109754621222,
+      "democrat_se": 0.011074113060138521,
+      "democrat_p": 0.00904066873617436
+    },
+    {
+      "spec": "no_log_individual",
+      "n": 6101,
+      "r2": 0.14042593289974392,
+      "incumbent_coef": -0.1065444490907409,
+      "incumbent_se": 0.006399336605490114,
+      "incumbent_p": 3.0618305613814517e-62,
+      "democrat_coef": 0.05073603595459819,
+      "democrat_se": 0.010980626877016373,
+      "democrat_p": 3.828080308364043e-06
+    },
+    {
+      "spec": "state_fe_hc3",
+      "n": 6101,
+      "r2": 0.1839941104426761,
+      "incumbent_coef": -0.12163333089757684,
+      "incumbent_se": 0.00490922546364506,
+      "incumbent_p": 1.6074936402677805e-135,
+      "democrat_coef": 0.05013124656489652,
+      "democrat_se": 0.00450241610638883,
+      "democrat_p": 8.54144835951472e-29
+    },
+    {
+      "spec": "pac_share_dv",
+      "n": 6101,
+      "r2": 0.6676723783878444,
+      "incumbent_coef": 0.4109186790008923,
+      "incumbent_se": 0.008785716802535697,
+      "incumbent_p": 0.0,
+      "democrat_coef": -0.003333779951265729,
+      "democrat_se": 0.007645344711973015,
+      "democrat_p": 0.6627978537731586
+    },
+    {
+      "spec": "drop_heavy_self_fund",
+      "n": 5944,
+      "r2": 0.15693994988403004,
+      "incumbent_coef": -0.12878732451263694,
+      "incumbent_se": 0.006673550485909592,
+      "incumbent_p": 5.56431645821723e-83,
+      "democrat_coef": 0.046791438210791146,
+      "democrat_se": 0.01114493501034127,
+      "democrat_p": 2.6874968531582538e-05
+    }
+  ],
+  "robust_2012_2014": {
+    "n": 8168,
+    "incumbent_coef": -0.11671199929589485,
+    "incumbent_se": 0.005746003250913006,
+    "incumbent_p": 1.0101109533977497e-91,
+    "cycles": [
+      2012,
+      2014,
+      2016,
+      2018,
+      2020,
+      2022,
+      2024
+    ]
+  },
+  "files": {
+    "2012": "/workspace/data/raw/fec/candidate_summary_2012.csv",
+    "2014": "/workspace/data/raw/fec/candidate_summary_2014.csv",
+    "2016": "/workspace/data/raw/fec/candidate_summary_2016.csv",
+    "2018": "/workspace/data/raw/fec/candidate_summary_2018.csv",
+    "2020": "/workspace/data/raw/fec/candidate_summary_2020.csv",
+    "2022": "/workspace/data/raw/fec/candidate_summary_2022.csv",
+    "2024": "/workspace/data/raw/fec/candidate_summary_2024.csv"
+  },
+  "corr_cols": [
+    "small_share",
+    "pac_share",
+    "incumbent",
+    "open_seat",
+    "senate",
+    "democrat",
+    "log_individual"
+  ]
+}
