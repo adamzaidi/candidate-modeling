@@ -12,6 +12,47 @@ The project is nonpartisan: it reports what was filed, with every rule and data 
   revision analysis and nowcasting for Texas and Pennsylvania (2022-2026), with BEA real-dollar and
   per-resident comparisons. Built entirely by [`reports/revisions/build.py`](reports/revisions/build.py):
   every number comes from the generated tables, and `manifest.json` records data vintages and rules.
+- **[What predicts a federal candidate's small-dollar share?](docs/regression-writeup.md)**
+  ([PDF](docs/regression-writeup.pdf)): OLS and fractional logit on FEC candidate summaries
+  (2016-2024). Built by [`analysis/regression.py`](analysis/regression.py). Every number comes from
+  that run.
+
+## Econometrics: small-dollar share
+
+**Question.** Among major-party House and Senate candidates, what predicts the share of individual
+receipts that is unitemized (donors at or under $200 in the cycle)? Incumbency, open seat, Senate vs
+House, party, and log individual receipts, with cycle fixed effects.
+
+**Why this question.** The repo's DuckDB only holds profiled candidates (currently one), and FEC
+small-dollar money is not in `contributions` (rule itemized-only). The seven state bulk files cannot
+be stacked for this outcome: itemization thresholds are not $200, Texas has no party, Wisconsin and
+North Carolina have no office, and no connector yet flags incumbent vs challenger. The FEC candidate
+summary CSV does have unitemized totals, incumbency, party, and office for every federal candidate,
+and it needs no API key.
+
+**Methods, in plain English.**
+
+- **OLS** estimates a percentage-point gap in the share, holding the other regressors fixed.
+  Challenger, House, Republican, and 2016 are the omitted groups.
+- **HC3 standard errors** allow the residual variance to differ across campaigns.
+- **State-clustered standard errors** also allow campaigns in the same state to be correlated
+  (shared donors, parties, media). Those are the headline SEs.
+- **Fractional logit** (binomial GLM) keeps predictions between 0 and 1. The writeup reports
+  average partial effects so they are in the same units as OLS.
+- **VIF** checks that the regressors are not too collinear. Residual plots are in `analysis/output/`.
+
+This is an association, not a causal effect. Race competitiveness is not in the file.
+
+**Reproduce** (downloads ~12 MB of public FEC CSVs into `data/raw/fec/`, gitignored):
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[analysis]'
+python analysis/regression.py
+```
+
+Output: `analysis/output/` (tables, figures, `manifest.json`), `docs/regression-writeup.md`, and
+`docs/regression-writeup.pdf`. Offline tests: `pytest tests/test_regression.py`.
 
 ## Coverage
 
